@@ -1,4 +1,5 @@
 import fs from "fs";
+import { createRequire } from "module";
 import path from "path";
 import chromium from "@sparticuz/chromium";
 import { addExtra } from "puppeteer-extra";
@@ -9,6 +10,45 @@ import "puppeteer-extra-plugin-user-preferences";
 import "puppeteer-extra-plugin-user-data-dir";
 import vanillaPuppeteer from "puppeteer-core";
 import { fileURLToPath } from "url";
+
+const require = createRequire(import.meta.url);
+
+/**
+ * Sparticuz는 import.meta.url 기준으로 bin을 찾는데, Vercel 번들 시 경로가 깨질 수 있어
+ * 실제 설치 위치 기준으로 bin 디렉터리를 찾는다.
+ * @returns {string | undefined}
+ */
+function resolveSparticuzChromiumBinDir() {
+  const fromEnv = process.env.SPARTICUZ_CHROMIUM_BIN?.trim();
+  if (fromEnv && fs.existsSync(path.join(fromEnv, "chromium.br"))) {
+    return path.resolve(fromEnv);
+  }
+
+  try {
+    if (typeof import.meta.resolve === "function") {
+      const resolved = fileURLToPath(import.meta.resolve("@sparticuz/chromium"));
+      const binDir = path.normalize(path.join(path.dirname(resolved), "..", "..", "bin"));
+      if (fs.existsSync(path.join(binDir, "chromium.br"))) return binDir;
+    }
+  } catch {
+    /* Node 18 또는 해석 실패 */
+  }
+
+  try {
+    const resolved = require.resolve("@sparticuz/chromium");
+    const binDir = path.normalize(path.join(path.dirname(resolved), "..", "..", "bin"));
+    if (fs.existsSync(path.join(binDir, "chromium.br"))) return binDir;
+  } catch {
+    /* ignore */
+  }
+
+  const cwdBin = path.join(process.cwd(), "node_modules/@sparticuz/chromium/bin");
+  if (fs.existsSync(path.join(cwdBin, "chromium.br"))) {
+    return path.normalize(cwdBin);
+  }
+
+  return undefined;
+}
 
 const puppeteer = addExtra(vanillaPuppeteer);
 puppeteer.use(StealthPlugin());
@@ -48,8 +88,12 @@ function resolveChromeExecutablePath() {
   return undefined;
 }
 
-function isVercelServerless() {
-  return process.env.VERCEL === "1";
+function shouldUseSparticuzChromium() {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.AWS_EXECUTION_ENV,
+  );
 }
 
 /**
@@ -57,8 +101,15 @@ function isVercelServerless() {
  * @returns {Promise<{ launchOpts: object; loginHeadless: boolean }>}
  */
 async function buildLaunchOptions(creds) {
-  if (isVercelServerless()) {
+  if (shouldUseSparticuzChromium()) {
     chromium.setGraphicsMode = false;
+    const chromiumBinDir = resolveSparticuzChromiumBinDir();
+    if (!chromiumBinDir) {
+      throw new Error(
+        "@sparticuz/chromium의 bin( chromium.br 등)을 찾을 수 없습니다. Vercel 배포 시 vercel.json의 includeFiles에 node_modules/@sparticuz/chromium/bin/** 가 포함되는지, " +
+          "또는 환경 변수 SPARTICUZ_CHROMIUM_BIN에 brotli 파일이 있는 디렉터리 절대 경로를 지정해 보세요.",
+      );
+    }
     const defaultViewport = {
       width: 1280,
       height: 900,
@@ -72,7 +123,7 @@ async function buildLaunchOptions(creds) {
       launchOpts: {
         args: await vanillaPuppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
         defaultViewport,
-        executablePath: await chromium.executablePath(),
+        executablePath: await chromium.executablePath(chromiumBinDir),
         headless: "shell",
         userDataDir: path.join("/tmp", "ig-puppeteer-profile"),
       },
