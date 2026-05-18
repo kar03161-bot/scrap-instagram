@@ -1,13 +1,16 @@
 import fs from "fs";
 import path from "path";
-import puppeteer from "puppeteer-extra";
+import chromium from "@sparticuz/chromium";
+import { addExtra } from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 // Stealth loads user-agent-override → user-preferences → user-data-dir via dynamic require;
 // explicit imports keep Vercel/serverless bundles from omitting those packages.
 import "puppeteer-extra-plugin-user-preferences";
 import "puppeteer-extra-plugin-user-data-dir";
+import vanillaPuppeteer from "puppeteer-core";
 import { fileURLToPath } from "url";
 
+const puppeteer = addExtra(vanillaPuppeteer);
 puppeteer.use(StealthPlugin());
 
 const IG_ORIGIN = "https://www.instagram.com";
@@ -30,7 +33,69 @@ function resolveChromeExecutablePath() {
       if (fs.existsSync(p)) return p;
     }
   }
+
+  if (process.platform === "linux") {
+    const candidates = [
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/google-chrome",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return p;
+    }
+  }
   return undefined;
+}
+
+function isVercelServerless() {
+  return process.env.VERCEL === "1";
+}
+
+/**
+ * @param {{ headless?: boolean }} creds
+ * @returns {Promise<{ launchOpts: object; loginHeadless: boolean }>}
+ */
+async function buildLaunchOptions(creds) {
+  if (isVercelServerless()) {
+    chromium.setGraphicsMode = false;
+    const defaultViewport = {
+      width: 1280,
+      height: 900,
+      deviceScaleFactor: 1,
+      hasTouch: false,
+      isLandscape: true,
+      isMobile: false,
+    };
+    return {
+      loginHeadless: true,
+      launchOpts: {
+        args: await vanillaPuppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
+        defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: "shell",
+        userDataDir: path.join("/tmp", "ig-puppeteer-profile"),
+      },
+    };
+  }
+
+  const executablePath = resolveChromeExecutablePath();
+  if (!executablePath) {
+    throw new Error(
+      "Chrome 실행 파일을 찾을 수 없습니다. Google Chrome을 설치하거나 CHROME_PATH / PUPPETEER_EXECUTABLE_PATH를 설정한 뒤 다시 시도해 주세요. (로컬에서 npm run install-browser 실행 후 안내 경로를 환경 변수로 지정할 수 있습니다.)",
+    );
+  }
+  const headless = creds.headless !== false;
+  return {
+    loginHeadless: headless,
+    launchOpts: {
+      headless,
+      userDataDir: USER_DATA_DIR,
+      executablePath,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1280,900"],
+      defaultViewport: { width: 1280, height: 900 },
+    },
+  };
 }
 
 function delay(ms) {
@@ -315,16 +380,9 @@ async function scrapeProfileSummary(page, handle) {
  * @param {{ igUsername: string; igPassword: string; headless?: boolean }} creds
  */
 export async function analyzeInfluencers(usernames, creds) {
-  const headless = creds.headless !== false;
-  const executablePath = resolveChromeExecutablePath();
+  const { launchOpts, loginHeadless } = await buildLaunchOptions(creds);
 
-  const browser = await puppeteer.launch({
-    headless,
-    userDataDir: USER_DATA_DIR,
-    ...(executablePath ? { executablePath } : {}),
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1280,900"],
-    defaultViewport: { width: 1280, height: 900 },
-  });
+  const browser = await puppeteer.launch(launchOpts);
 
   try {
     const page = await browser.newPage();
@@ -332,7 +390,7 @@ export async function analyzeInfluencers(usernames, creds) {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     );
 
-    await login(page, creds.igUsername, creds.igPassword, headless);
+    await login(page, creds.igUsername, creds.igPassword, loginHeadless);
 
     const rows = [];
 
