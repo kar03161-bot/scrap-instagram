@@ -231,6 +231,28 @@ async function hasInstagramSession(page) {
   return cookies.some((cookie) => cookie.name === "sessionid" && cookie.value);
 }
 
+async function applyInstagramSessionCookie(page, sessionId) {
+  if (!sessionId) return false;
+
+  await page.setCookie({
+    name: "sessionid",
+    value: sessionId,
+    domain: ".instagram.com",
+    path: "/",
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+  });
+
+  await page.goto(IG_ORIGIN, {
+    waitUntil: "networkidle2",
+    timeout: 60000,
+  });
+  await delay(800);
+  await dismissBlockingDialogs(page);
+  return hasInstagramSession(page);
+}
+
 async function waitForManualLoginIfNeeded(page) {
   await page.waitForFunction(
     () => {
@@ -242,7 +264,15 @@ async function waitForManualLoginIfNeeded(page) {
   );
 }
 
-async function login(page, username, password, headless) {
+async function login(page, username, password, headless, sessionId) {
+  if (await applyInstagramSessionCookie(page, sessionId)) return;
+
+  if (!username || !password) {
+    throw new Error(
+      "IG_SESSIONID로 Instagram 세션을 복원하지 못했습니다. Vercel 환경 변수의 IG_SESSIONID 값을 새로 발급한 뒤 다시 배포해 주세요.",
+    );
+  }
+
   await page.goto(IG_ORIGIN, {
     waitUntil: "networkidle2",
     timeout: 60000,
@@ -261,6 +291,11 @@ async function login(page, username, password, headless) {
 
   const usernameInput = await page.$('input[name="username"]');
   if (!usernameInput) {
+    if (headless) {
+      throw new Error(
+        "Instagram 로그인 입력칸을 찾지 못했습니다. Vercel에서는 보안 확인/챌린지 화면을 수동으로 통과할 수 없으므로 IG_SESSIONID 환경 변수를 설정해 주세요.",
+      );
+    }
     // HEADLESS=false 상태에서는 사용자가 직접 로그인할 수 있도록 최대 2분 기다린다.
     await waitForManualLoginIfNeeded(page);
     await delay(1200);
@@ -428,7 +463,7 @@ async function scrapeProfileSummary(page, handle) {
 
 /**
  * @param {string[]} usernames
- * @param {{ igUsername: string; igPassword: string; headless?: boolean }} creds
+ * @param {{ igUsername?: string; igPassword?: string; igSessionId?: string; headless?: boolean }} creds
  */
 export async function analyzeInfluencers(usernames, creds) {
   const { launchOpts, loginHeadless } = await buildLaunchOptions(creds);
@@ -441,7 +476,7 @@ export async function analyzeInfluencers(usernames, creds) {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     );
 
-    await login(page, creds.igUsername, creds.igPassword, loginHeadless);
+    await login(page, creds.igUsername, creds.igPassword, loginHeadless, creds.igSessionId);
 
     const rows = [];
 

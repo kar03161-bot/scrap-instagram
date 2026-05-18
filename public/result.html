@@ -87,7 +87,7 @@
 
       table {
         width: 100%;
-        min-width: 860px;
+        min-width: 980px;
         border-collapse: collapse;
         font-size: 0.95rem;
       }
@@ -155,6 +155,12 @@
       .er-cell {
         color: #743c46;
         font-weight: 800;
+      }
+
+      .date-cell {
+        color: var(--muted);
+        font-size: 0.88rem;
+        white-space: nowrap;
       }
 
       .grade-badge {
@@ -277,7 +283,7 @@
       <header class="result-header">
         <p class="hero-tag"><span aria-hidden="true"></span>Instagram Analytics</p>
         <h1>계정 분석<br />결과</h1>
-        <p class="lead">사용자명을 입력하면 즉시 분석합니다</p>
+        <p class="lead">Vercel DB에 저장된 인플루언서 분석 목록입니다</p>
       </header>
 
       <section class="result-card" aria-label="인스타그램 분석 결과">
@@ -338,6 +344,14 @@
         return { label: "D", className: "grade-d" };
       }
 
+      function gradeBadge(row) {
+        const label = String(row.grade || "").toUpperCase();
+        if (["S", "A", "B", "C", "D"].includes(label)) {
+          return { label, className: `grade-${label.toLowerCase()}` };
+        }
+        return gradeFor(row.er);
+      }
+
       function fmt(n) {
         if (n == null || Number.isNaN(n)) return "-";
         return Math.round(n).toLocaleString("ko-KR");
@@ -355,6 +369,19 @@
         return `${n.toFixed(2)}%`;
       }
 
+      function fmtDate(value) {
+        if (!value) return "-";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "-";
+        return date.toLocaleString("ko-KR", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
       function escapeHtml(value) {
         return String(value ?? "")
           .replaceAll("&", "&amp;")
@@ -367,7 +394,16 @@
       function renderEmpty() {
         resultContent.innerHTML = `
           <div class="empty-state">
-            <p>표시할 분석 결과가 없습니다. 계정 분석을 먼저 진행해 주세요.</p>
+            <p>DB에 저장된 분석 결과가 없습니다. 계정 분석을 먼저 진행해 주세요.</p>
+            <a class="btn-link" href="/">분석 페이지로 돌아가기</a>
+          </div>
+        `;
+      }
+
+      function renderError(message) {
+        resultContent.innerHTML = `
+          <div class="empty-state">
+            <p>${escapeHtml(message || "분석 목록을 불러오는 중 오류가 발생했습니다.")}</p>
             <a class="btn-link" href="/">분석 페이지로 돌아가기</a>
           </div>
         `;
@@ -376,11 +412,8 @@
       function renderResults(rows) {
         const body = rows
           .map((row, index) => {
-            const posts = row.posts || [];
-            const avgLikes = avg(posts.map((post) => post.likes));
-            const avgComments = avg(posts.map((post) => post.comments));
-            const erPercent = calcErPercent(row);
-            const grade = gradeFor(erPercent);
+            const erPercent = row.er;
+            const grade = gradeBadge(row);
             const username = escapeHtml(row.username || "-");
 
             return `
@@ -394,17 +427,18 @@
                   <div class="metric-sub">${fmt(row.followers)}</div>
                 </td>
                 <td>
-                  <div class="metric-main">${compact(avgLikes)}</div>
-                  <div class="metric-sub">${fmt(avgLikes)}</div>
+                  <div class="metric-main">${compact(row.likes)}</div>
+                  <div class="metric-sub">${fmt(row.likes)}</div>
                 </td>
                 <td>
-                  <div class="metric-main">${compact(avgComments)}</div>
-                  <div class="metric-sub">${fmt(avgComments)}</div>
+                  <div class="metric-main">${compact(row.comments)}</div>
+                  <div class="metric-sub">${fmt(row.comments)}</div>
                 </td>
-                <td class="er-cell">${row.error ? "-" : fmtPercent(erPercent)}</td>
+                <td class="er-cell">${fmtPercent(erPercent)}</td>
                 <td>
                   <span class="grade-badge ${grade.className}">${grade.label}</span>
                 </td>
+                <td class="date-cell">${fmtDate(row.analyzedAt)}</td>
               </tr>
             `;
           })
@@ -422,6 +456,7 @@
                   <th>평균 댓글</th>
                   <th>ER</th>
                   <th>등급</th>
+                  <th>조회한 날짜</th>
                 </tr>
               </thead>
               <tbody>${body}</tbody>
@@ -430,17 +465,25 @@
         `;
       }
 
-      try {
-        const saved = JSON.parse(sessionStorage.getItem("instagramAnalysisResults") || "{}");
-        const rows = Array.isArray(saved.results) ? saved.results : [];
+      async function loadResults() {
+        const res = await fetch("/api/influencers");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          renderError(data.error);
+          return;
+        }
+
+        const rows = Array.isArray(data.results) ? data.results : [];
         if (rows.length === 0) {
           renderEmpty();
         } else {
           renderResults(rows);
         }
-      } catch {
-        renderEmpty();
       }
+
+      loadResults().catch((error) => {
+        renderError(error && error.message ? error.message : String(error));
+      });
     </script>
   </body>
 </html>
