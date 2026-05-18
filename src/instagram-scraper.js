@@ -252,6 +252,38 @@ async function dismissBlockingDialogs(page) {
   }
 }
 
+/**
+ * Puppeteer에 sessionid 쿠키가 있어도, Instagram 서버가 IP/환경 불일치로 로그아웃 UI를 주는 경우가 있다.
+ * 특히 집/localhost에서 만든 sessionid를 Vercel(데이터센터 IP)에서 쓰면 흔함.
+ */
+async function instagramUiShowsLoggedOut(page) {
+  return page.evaluate(() => {
+    const p = location.pathname;
+    if (p.includes("/accounts/login") || p.includes("/challenge")) return true;
+    const html = document.documentElement.innerHTML || "";
+    if (/FelidaeLoggedOutSessionHint|logged_out_/i.test(html)) return true;
+    if (
+      document.querySelector('input[name="username"]') &&
+      document.querySelector('input[name="password"]')
+    ) {
+      return true;
+    }
+    if (p === "/" || p === "") {
+      const hasHome = document.querySelector('[aria-label="Home"]');
+      if (!hasHome) {
+        const t = (document.body?.innerText || "").slice(0, 3000);
+        if (
+          (/\bLog in\b|로그인/i.test(t) && /\bSign up\b|가입/i.test(t)) ||
+          (t.includes("Log in") && t.includes("Sign up"))
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+}
+
 async function hasInstagramSession(page) {
   const cookies = await page.cookies(IG_ORIGIN);
   return cookies.some((cookie) => cookie.name === "sessionid" && cookie.value);
@@ -352,9 +384,10 @@ async function applyInstagramSessionCookie(page, sessionId, csrfToken) {
     waitUntil: "networkidle2",
     timeout: 60000,
   });
-  await delay(900);
+  await delay(2000);
   await dismissBlockingDialogs(page);
-  return await hasInstagramSession(page);
+  if (await instagramUiShowsLoggedOut(page)) return false;
+  return true;
 }
 
 async function waitForManualLoginIfNeeded(page) {
@@ -372,10 +405,13 @@ async function login(page, username, password, headless, sessionId, csrfToken) {
   if (await applyInstagramSessionCookie(page, sessionId, csrfToken)) return;
 
   if (!username || !password) {
+    const vercelNote = shouldUseSparticuzChromium()
+      ? " 같은 sessionid·csrftoken이 localhost에서는 되고 Vercel에서만 안 되는 경우, Instagram이 데이터센터 IP에서 세션을 무효로 처리했을 가능성이 큽니다(정상 동작에 가깝습니다). 이 환경에서는 아이디/비밀번호 자동 로그인도 챌린지 때문에 대개 불가하므로, 프록시·로컬 워커 등 다른 아키텍처를 검토해야 합니다."
+      : "";
     throw new Error(
-      "IG_SESSIONID(와 가능하면 IG_CSRFTOKEN)로 세션을 복원하지 못했습니다. " +
-        "Chrome에서 instagram.com 로그인 → 개발자도구 → Application → Cookies → instagram.com 에서 sessionid 값을 복사해 Vercel 환경 변수 IG_SESSIONID 로 넣고, " +
-        "같은 화면의 csrftoken 값을 IG_CSRFTOKEN 에도 넣은 뒤 재배포하세요.",
+      "IG_SESSIONID(·IG_CSRFTOKEN)만으로 이 서버에서 Instagram 로그인 화면이 사라지지 않았습니다." +
+        vercelNote +
+        " Chrome에서 instagram.com 로그인 → Application → Cookies → sessionid / csrftoken 을 다시 복사해 환경 변수 IG_SESSIONID, IG_CSRFTOKEN 에 넣었는지, 값에 따옴표·공백이 없는지 확인하세요.",
     );
   }
 
@@ -385,8 +421,10 @@ async function login(page, username, password, headless, sessionId, csrfToken) {
   });
   await delay(900);
   await dismissBlockingDialogs(page);
-
-  if (await hasInstagramSession(page)) return;
+  for (let i = 0; i < 5; i++) {
+    if ((await hasInstagramSession(page)) && !(await instagramUiShowsLoggedOut(page))) return;
+    await delay(400);
+  }
 
   await page.goto(`${IG_ORIGIN}/accounts/login/`, {
     waitUntil: "domcontentloaded",
@@ -429,7 +467,7 @@ async function login(page, username, password, headless, sessionId, csrfToken) {
     await waitForManualLoginIfNeeded(page);
     await delay(1200);
     await dismissBlockingDialogs(page);
-    if (await hasInstagramSession(page)) return;
+    if ((await hasInstagramSession(page)) && !(await instagramUiShowsLoggedOut(page))) return;
     throw new Error(
       "로그인 화면을 찾지 못했습니다. 터미널에서 HEADLESS=false 로 서버를 실행하면 Chrome 창이 열립니다. " +
         "창이 안 보이면 .env에 HEADLESS=false 가 있는지 확인한 뒤 서버를 다시 시작하세요.",
@@ -479,11 +517,18 @@ async function login(page, username, password, headless, sessionId, csrfToken) {
       await waitForManualLoginIfNeeded(page);
       await delay(1200);
       await dismissBlockingDialogs(page);
-      if (await hasInstagramSession(page)) return;
+      if ((await hasInstagramSession(page)) && !(await instagramUiShowsLoggedOut(page))) {
+        return;
+      }
     }
     throw new Error(
       "로그인에 실패했거나 추가 확인(2단계 인증·보안 확인)이 필요합니다. " +
         "비밀번호를 확인하거나, 로컬에서 HEADLESS=false로 한 번 로그인한 뒤 sessionid를 IG_SESSIONID로 쓰세요.",
+    );
+  }
+  if (await instagramUiShowsLoggedOut(page)) {
+    throw new Error(
+      "Instagram이 이 브라우저·IP 조합에서 로그인 상태를 유지하지 않습니다. Vercel 등 데이터센터에서는 같은 sessionid로도 localhost와 다르게 동작할 수 있습니다.",
     );
   }
 }

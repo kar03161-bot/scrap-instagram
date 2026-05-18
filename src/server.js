@@ -10,12 +10,26 @@ const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+
+/** Vercel UI에 붙은 따옴표까지 복사된 경우 제거 */
+function normalizeEnvSecret(value) {
+  if (value == null) return "";
+  let s = String(value).trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
 const PORT = Number(process.env.PORT) || 3000;
 
-const igUsername = process.env.IG_USERNAME?.trim();
-const igPassword = process.env.IG_PASSWORD?.trim();
-const igSessionId = process.env.IG_SESSIONID?.trim();
-const igCsrfToken = process.env.IG_CSRFTOKEN?.trim();
+const igUsername = normalizeEnvSecret(process.env.IG_USERNAME);
+const igPassword = normalizeEnvSecret(process.env.IG_PASSWORD);
+const igSessionId = normalizeEnvSecret(process.env.IG_SESSIONID);
+const igCsrfToken = normalizeEnvSecret(process.env.IG_CSRFTOKEN);
 const headless = process.env.HEADLESS !== "false";
 /** 풀링 URL 우선 (Vercel/Neon 권장). neon() HTTP는 호스트 매핑 불일치 시 resource-not-found(404)가 날 수 있어 TCP(pg) 사용. */
 const databaseUrl =
