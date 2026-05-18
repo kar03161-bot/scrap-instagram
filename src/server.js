@@ -1,10 +1,11 @@
 import "dotenv/config";
-import { neon } from "@neondatabase/serverless";
 import express from "express";
 import path from "path";
-import { createClient } from "@vercel/postgres";
+import pg from "pg";
 import { fileURLToPath } from "url";
 import { analyzeInfluencers } from "./instagram-scraper.js";
+
+const { Pool } = pg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,21 +16,20 @@ const igUsername = process.env.IG_USERNAME?.trim();
 const igPassword = process.env.IG_PASSWORD?.trim();
 const igSessionId = process.env.IG_SESSIONID?.trim();
 const headless = process.env.HEADLESS !== "false";
+/** 풀링 URL 우선 (Vercel/Neon 권장). neon() HTTP는 호스트 매핑 불일치 시 resource-not-found(404)가 날 수 있어 TCP(pg) 사용. */
 const databaseUrl =
   process.env.POSTGRES_URL?.trim() || process.env.POSTGRES_URL_NON_POOLING?.trim();
 const hasDatabaseConfig = Boolean(databaseUrl);
-/** Vercel/Neon: WebSocket(pg Client) 경로는 404 등으로 실패할 수 있어 HTTP(neon)만 사용 */
-let neonHttpSql;
+/** @type {pg.Pool | undefined} */
+let dbPool;
 
-function isLocalDatabaseUrl(url) {
-  if (!url) return false;
-  try {
-    const normalized = url.replace(/^postgresql:\/\//, "https://");
-    const host = new URL(normalized).hostname;
-    return host === "localhost" || host === "127.0.0.1";
-  } catch {
-    return false;
+/** @param {TemplateStringsArray} strings @param {unknown[]} values */
+function templateToParameterizedSql(strings, values) {
+  let text = strings[0] ?? "";
+  for (let i = 1; i < strings.length; i++) {
+    text += `$${i}${strings[i] ?? ""}`;
   }
+  return [text, values];
 }
 
 async function dbQuery(strings, ...values) {
@@ -39,18 +39,19 @@ async function dbQuery(strings, ...values) {
     );
   }
 
-  if (isLocalDatabaseUrl(databaseUrl)) {
-    const client = createClient({ connectionString: databaseUrl });
-    await client.connect();
-    try {
-      return await client.sql(strings, ...values);
-    } finally {
-      await client.end();
-    }
-  }
+  const maxEnv = Number(process.env.PG_POOL_MAX);
+  const poolMax =
+    Number.isFinite(maxEnv) && maxEnv > 0 ? Math.min(10, maxEnv) : 5;
 
-  neonHttpSql ||= neon(databaseUrl, { fullResults: true });
-  return neonHttpSql(strings, ...values);
+  dbPool ||= new Pool({
+    connectionString: databaseUrl,
+    max: poolMax,
+    idleTimeoutMillis: 20_000,
+    connectionTimeoutMillis: 20_000,
+  });
+
+  const [text, params] = templateToParameterizedSql(strings, values);
+  return dbPool.query(text, params);
 }
 
 /** @param {unknown} reason */
