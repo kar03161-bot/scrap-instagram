@@ -2,6 +2,10 @@ import fs from "fs";
 import path from "path";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+// Stealth loads user-agent-override → user-preferences → user-data-dir via dynamic require;
+// explicit imports keep Vercel/serverless bundles from omitting those packages.
+import "puppeteer-extra-plugin-user-preferences";
+import "puppeteer-extra-plugin-user-data-dir";
 import { fileURLToPath } from "url";
 
 puppeteer.use(StealthPlugin());
