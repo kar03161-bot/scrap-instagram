@@ -1,30 +1,15 @@
 {
-  "version": 2,
   "functions": {
     "src/server.js": {
       "memory": 3008,
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": [
+        "node_modules/puppeteer-extra-plugin-stealth/evasions/**",
+        "node_modules/puppeteer-extra-plugin-user-preferences/**",
+        "node_modules/puppeteer-extra-plugin-user-data-dir/**",
+        "node_modules/@sparticuz/chromium/bin/**",
+        "node_modules/@sparticuz/chromium/build/**"
+      ]
     }
-  },
-  "builds": [
-    {
-      "src": "src/server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "node_modules/puppeteer-extra-plugin-stealth/evasions/**",
-          "node_modules/puppeteer-extra-plugin-user-preferences/**",
-          "node_modules/puppeteer-extra-plugin-user-data-dir/**",
-          "node_modules/@sparticuz/chromium/bin/**",
-          "node_modules/@sparticuz/chromium/build/**"
-        ]
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "src/server.js"
-    }
-  ]
+  }
 }

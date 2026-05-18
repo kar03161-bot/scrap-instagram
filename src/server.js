@@ -14,7 +14,7 @@ const igPassword = process.env.IG_PASSWORD?.trim();
 const headless = process.env.HEADLESS !== "false";
 
 app.use(express.json({ limit: "512kb" }));
-app.use("/css", express.static(path.join(__dirname, "../css")));
+// 로컬: public 정적 파일. Vercel 프로덕션에서는 public/** 가 CDN으로 제공되며 express.static 은 무시됨.
 app.use(express.static(path.join(__dirname, "../public")));
 
 app.get("/api/health", (_req, res) => {
@@ -62,9 +62,13 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`서버 실행 중: http://localhost:${PORT}`);
-  if (!igUsername || !igPassword) {
-    console.warn("[경고] IG_USERNAME / IG_PASSWORD 가 .env에 없습니다.");
-  }
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`서버 실행 중: http://localhost:${PORT}`);
+    if (!igUsername || !igPassword) {
+      console.warn("[경고] IG_USERNAME / IG_PASSWORD 가 .env에 없습니다.");
+    }
+  });
+}
+
+export default app;
