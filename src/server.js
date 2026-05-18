@@ -330,6 +330,7 @@ app.post("/api/analyze", async (req, res) => {
     const savedResults = await saveInfluencerResults(results);
     res.json({ results: savedResults });
   } catch (err) {
+    console.error("[api/analyze] 실패:", err);
     res.status(500).json({ error: messageFromUnknown(err) });
   }
 });

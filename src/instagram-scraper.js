@@ -105,6 +105,77 @@ async function getInstagramCookiesJar(page) {
   return [...byKey.values()];
 }
 
+/**
+ * Vercel/서버용: 환경변수 `IG_SESSIONID`(·`IG_CSRFTOKEN`)을 브라우저에 넣고 피드 진입 여부로 검증.
+ * 집/로컬에서 복사한 sessionid는 데이터센터 IP에서 거절되는 경우가 많다.
+ * @param {string | undefined} sessionId
+ * @param {string | undefined} csrfToken
+ */
+async function tryApplyEnvSessionCookies(page, sessionId, csrfToken) {
+  const sid = sessionId?.trim();
+  if (!sid) return false;
+
+  console.log("[instagram-scraper] IG_SESSIONID 환경변수로 세션 시도");
+  try {
+    await page
+      .goto("about:blank", { waitUntil: "domcontentloaded", timeout: 15000 })
+      .catch(() => {});
+
+    const cookies = [
+      {
+        name: "sessionid",
+        value: sid,
+        domain: ".instagram.com",
+        path: "/",
+        secure: true,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ];
+    const csrf = csrfToken?.trim();
+    if (csrf) {
+      cookies.push({
+        name: "csrftoken",
+        value: csrf,
+        domain: ".instagram.com",
+        path: "/",
+        secure: true,
+        httpOnly: false,
+        sameSite: "Lax",
+      });
+    }
+
+    await page.setCookie(...cookies);
+    await page.goto(IG_ORIGIN, {
+      waitUntil: "domcontentloaded",
+      timeout: 90000,
+    });
+    await delay(1500);
+    await dismissBlockingDialogs(page);
+
+    if (!(await hasInstagramSession(page))) {
+      console.warn(
+        "[instagram-scraper] IG_SESSIONID 적용 후에도 sessionid 쿠키가 보이지 않습니다.",
+      );
+      return false;
+    }
+    if (await instagramUiShowsLoggedOut(page)) {
+      console.warn(
+        "[instagram-scraper] IG_SESSIONID로 열었으나 로그아웃 UI — 세션 무효 또는 IP/환경 불일치(Vercel 등).",
+      );
+      return false;
+    }
+    console.log("[instagram-scraper] IG_SESSIONID 환경변수 세션 사용 성공");
+    return true;
+  } catch (err) {
+    console.warn(
+      "[instagram-scraper] IG_SESSIONID 적용 중 오류:",
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
 /** @param {string} path */
 function instagramPathStillInAuthFlow(path) {
   const p = path || "";
@@ -709,12 +780,21 @@ async function waitForManualLoginIfNeeded(page) {
 }
 
 /**
- * 1) cookiePath JSON이 있으면 적용 후 유효하면 그대로 사용
- * 2) 헤드리스가 아니면: 쿠키 초기화 → 로그인 페이지에서 수동 로그인 대기 → cookiePath 저장
- * 3) 헤드리스면: 쿠키 초기화 → IG_USERNAME/IG_PASSWORD 자동 로그인 → cookiePath 저장
+ * 1) env IG_SESSIONID(+csrftoken) 있으면 우선 적용 (Vercel 배포)
+ * 2) cookiePath JSON이 있으면 적용 후 유효하면 그대로 사용
+ * 3) 헤드리스가 아니면: 쿠키 초기화 → 로그인 페이지에서 수동 로그인 대기 → cookiePath 저장
+ * 4) 헤드리스면: 쿠키 초기화 → IG_USERNAME/IG_PASSWORD 자동 로그인 → cookiePath 저장
  * @param {string} cookieFilePath
+ * @param {{ igSessionId?: string; igCsrfToken?: string }} [envFromServer]
  */
-async function login(page, username, password, headless, cookieFilePath) {
+async function login(
+  page,
+  username,
+  password,
+  headless,
+  cookieFilePath,
+  envFromServer,
+) {
   const resolvedCookiePath =
     cookieFilePath || path.join(__dirname, "../.instagram-cookies.json");
 
@@ -722,8 +802,26 @@ async function login(page, username, password, headless, cookieFilePath) {
     headless,
     hasUsername: Boolean(username),
     hasPassword: Boolean(password),
+    hasEnvSessionId: Boolean(envFromServer?.igSessionId?.trim()),
     resolvedCookiePath,
   });
+
+  if (envFromServer?.igSessionId?.trim()) {
+    const applied = await tryApplyEnvSessionCookies(
+      page,
+      envFromServer.igSessionId,
+      envFromServer.igCsrfToken,
+    );
+    if (applied) {
+      console.log(
+        "[instagram-scraper] login 분기: 환경변수 IG_SESSIONID 세션 사용 후 return",
+      );
+      return;
+    }
+    console.log(
+      "[instagram-scraper] IG_SESSIONID 무효·거부 — 저장 쿠키 또는 아이디/비번 로그인 시도",
+    );
+  }
 
   if (await tryReuseSavedCookies(page, resolvedCookiePath)) {
     console.log(
@@ -833,9 +931,14 @@ async function login(page, username, password, headless, cookieFilePath) {
     console.log(
       "[instagram-scraper] login 분기: 헤드리스인데 IG_USERNAME/PASSWORD 없음 → throw",
     );
+    const vercelHint =
+      process.env.VERCEL && envFromServer?.igSessionId
+        ? " Vercel에서는 로컬 PC에서 복사한 IG_SESSIONID가 IP 불일치로 거절되는 경우가 많습니다. 프로젝트에 IG_USERNAME·IG_PASSWORD를 설정해 서버에서 자동 로그인하거나, 가능한 경우 데이터센터에서 유효한 세션을 사용해 주세요."
+        : "";
     throw new Error(
       "저장된 Instagram 쿠키가 없거나 만료되었습니다. " +
-        "로컬에서 HEADLESS=false로 서버를 실행해 브라우저에서 한 번 로그인하면 쿠키가 저장되거나, IG_USERNAME·IG_PASSWORD를 설정하세요.",
+        "로컬에서 HEADLESS=false로 서버를 실행해 브라우저에서 한 번 로그인하면 쿠키가 저장되거나, IG_USERNAME·IG_PASSWORD 또는 유효한 IG_SESSIONID를 설정하세요." +
+        vercelHint,
     );
   }
 
@@ -991,13 +1094,21 @@ async function scrapeProfileSummary(page, handle) {
 
 /**
  * @param {string[]} usernames
- * @param {{ igUsername?: string; igPassword?: string; headless?: boolean; cookiePath?: string }} creds
+ * @param {{
+ *   igUsername?: string;
+ *   igPassword?: string;
+ *   igSessionId?: string;
+ *   igCsrfToken?: string;
+ *   headless?: boolean;
+ *   cookiePath?: string;
+ * }} creds
  */
 export async function analyzeInfluencers(usernames, creds) {
   console.log("[instagram-scraper] analyzeInfluencers 시작", {
     userCount: usernames.length,
     credsHeadless: creds.headless,
     hasIgUsername: Boolean(creds.igUsername),
+    hasIgSessionId: Boolean(creds.igSessionId?.trim()),
     cookiePath: creds.cookiePath,
   });
 
@@ -1029,6 +1140,10 @@ export async function analyzeInfluencers(usernames, creds) {
       creds.igPassword,
       loginHeadless,
       cookiePath,
+      {
+        igSessionId: creds.igSessionId,
+        igCsrfToken: creds.igCsrfToken,
+      },
     );
     console.log("[instagram-scraper] login() 완료");
 
