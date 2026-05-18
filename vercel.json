@@ -1,7 +1,6 @@
 {
   "functions": {
     "src/server.js": {
-      "memory": 3008,
       "maxDuration": 60,
       "includeFiles": "{node_modules/@sparticuz/chromium,node_modules/puppeteer-extra-plugin-stealth/evasions,node_modules/puppeteer-extra-plugin-user-preferences,node_modules/puppeteer-extra-plugin-user-data-dir}/**"
     }
