@@ -157,6 +157,22 @@
         font-size: 0.8rem;
       }
 
+      .segment-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        max-width: 100%;
+        min-height: 24px;
+        padding: 3px 8px;
+        border: 1.5px solid currentColor;
+        border-radius: 9px;
+        background: color-mix(in srgb, currentColor 7%, transparent);
+        font-size: 0.72rem;
+        font-weight: 800;
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+
       .er-cell {
         color: #743c46;
         font-weight: 800;
@@ -251,7 +267,7 @@
         gap: 10px;
         color: var(--muted);
         font-size: 0.95rem;
-        white-space: nowrap;
+        white-space: normal;
       }
 
       .legend-item .grade-badge {
@@ -296,27 +312,23 @@
       </section>
 
       <section class="legend" aria-label="등급 기준">
-        <p class="legend-title">등급 기준 (ER 기반)</p>
+        <p class="legend-title">팔로워 구간별 ER 등급 기준</p>
         <div class="legend-list">
           <div class="legend-item">
             <span class="grade-badge grade-s">S</span>
-            <span>5% 이상 - 슈퍼 인플루언서</span>
+            <span>나노 8% / 마이크로 6% / 미드티어 4.5% / 매크로 3.5% / 메가 2.5% 이상</span>
           </div>
           <div class="legend-item">
             <span class="grade-badge grade-a">A</span>
-            <span>3-5% - 높은 참여도</span>
+            <span>나노 5~8% / 마이크로 4~6% / 미드티어 3~4.5% / 매크로 2~3.5% / 메가 1.5~2.5%</span>
           </div>
           <div class="legend-item">
             <span class="grade-badge grade-b">B</span>
-            <span>1-3% - 평균 참여도</span>
+            <span>나노 3~5% / 마이크로 2.5~4% / 미드티어 1.8~3% / 매크로 1.2~2% / 메가 0.8~1.5%</span>
           </div>
           <div class="legend-item">
             <span class="grade-badge grade-c">C</span>
-            <span>0.5-1% - 낮은 참여도</span>
-          </div>
-          <div class="legend-item">
-            <span class="grade-badge grade-d">D</span>
-            <span>0.5% 미만 - 매우 낮음</span>
+            <span>나노 3% 미만 / 마이크로 2.5% 미만 / 미드티어 1.8% 미만 / 매크로 1.2% 미만 / 메가 0.8% 미만</span>
           </div>
         </div>
       </section>
@@ -340,21 +352,43 @@
         return ((avgLikes + avgComments) / row.followers) * 100;
       }
 
-      function gradeFor(erPercent) {
-        if (erPercent == null) return { label: "-", className: "grade-d" };
-        if (erPercent >= 5) return { label: "S", className: "grade-s" };
-        if (erPercent >= 3) return { label: "A", className: "grade-a" };
-        if (erPercent >= 1) return { label: "B", className: "grade-b" };
-        if (erPercent >= 0.5) return { label: "C", className: "grade-c" };
-        return { label: "D", className: "grade-d" };
+      function followerSegmentFor(followers) {
+        if (followers == null || followers <= 0) return null;
+        if (followers < 1_000) {
+          return { label: "1K 미만", s: 8, a: 5, b: 3 };
+        }
+        if (followers < 10_000) {
+          return { label: "나노 (1K~10K)", s: 8, a: 5, b: 3 };
+        }
+        if (followers < 50_000) {
+          return { label: "마이크로 (10K~50K)", s: 6, a: 4, b: 2.5 };
+        }
+        if (followers < 100_000) {
+          return { label: "미드티어 (50K~100K)", s: 4.5, a: 3, b: 1.8 };
+        }
+        if (followers < 500_000) {
+          return { label: "매크로 (100K~500K)", s: 3.5, a: 2, b: 1.2 };
+        }
+        return { label: "메가 (500K 이상)", s: 2.5, a: 1.5, b: 0.8 };
+      }
+
+      function gradeFor(erPercent, followers) {
+        const segment = followerSegmentFor(followers);
+        if (erPercent == null || !segment) return { label: "-", className: "grade-c" };
+        if (erPercent >= segment.s) return { label: "S", className: "grade-s" };
+        if (erPercent >= segment.a) return { label: "A", className: "grade-a" };
+        if (erPercent >= segment.b) return { label: "B", className: "grade-b" };
+        return { label: "C", className: "grade-c" };
       }
 
       function gradeBadge(row) {
-        const label = String(row.grade || "").toUpperCase();
-        if (["S", "A", "B", "C", "D"].includes(label)) {
-          return { label, className: `grade-${label.toLowerCase()}` };
-        }
-        return gradeFor(row.er);
+        return gradeFor(row.er, row.followers);
+      }
+
+      function followerSegmentBadge(followers, gradeClassName) {
+        const segment = followerSegmentFor(followers);
+        if (!segment) return fmt(followers);
+        return `<span class="segment-badge ${gradeClassName}">${escapeHtml(segment.label)}</span>`;
       }
 
       function fmt(n) {
@@ -419,6 +453,7 @@
           .map((row, index) => {
             const erPercent = row.er;
             const grade = gradeBadge(row);
+            const followerSegment = followerSegmentBadge(row.followers, grade.className);
             const username = escapeHtml(row.username || "-");
 
             return `
@@ -429,7 +464,7 @@
                 </td>
                 <td>
                   <div class="metric-main">${compact(row.followers)}</div>
-                  <div class="metric-sub">${fmt(row.followers)}</div>
+                  <div class="metric-sub">${followerSegment}</div>
                 </td>
                 <td>
                   <div class="metric-main">${compact(row.likes)}</div>

@@ -134,13 +134,22 @@ function calcErPercent(row) {
   return ((avgLikes + avgComments) / row.followers) * 100;
 }
 
-function gradeFor(erPercent) {
-  if (erPercent == null) return "-";
-  if (erPercent >= 5) return "S";
-  if (erPercent >= 3) return "A";
-  if (erPercent >= 1) return "B";
-  if (erPercent >= 0.5) return "C";
-  return "D";
+function followerSegmentFor(followers) {
+  if (followers == null || followers <= 0) return null;
+  if (followers < 10_000) return { label: "나노", s: 8, a: 5, b: 3 };
+  if (followers < 50_000) return { label: "마이크로", s: 6, a: 4, b: 2.5 };
+  if (followers < 100_000) return { label: "미드티어", s: 4.5, a: 3, b: 1.8 };
+  if (followers < 500_000) return { label: "매크로", s: 3.5, a: 2, b: 1.2 };
+  return { label: "메가", s: 2.5, a: 1.5, b: 0.8 };
+}
+
+function gradeFor(erPercent, followers) {
+  const segment = followerSegmentFor(followers);
+  if (erPercent == null || !segment) return "-";
+  if (erPercent >= segment.s) return "S";
+  if (erPercent >= segment.a) return "A";
+  if (erPercent >= segment.b) return "B";
+  return "C";
 }
 
 function enrichInfluencerResult(row) {
@@ -154,7 +163,7 @@ function enrichInfluencerResult(row) {
     likes,
     comments,
     er,
-    grade: gradeFor(er),
+    grade: gradeFor(er, row.followers),
   };
 }
 
@@ -261,7 +270,7 @@ app.get("/api/influencers", async (_req, res) => {
         likes: row.likes == null ? null : Number(row.likes),
         comments: row.comments == null ? null : Number(row.comments),
         er: row.er == null ? null : Number(row.er),
-        grade: row.grade,
+        grade: gradeFor(row.er == null ? null : Number(row.er), row.followers),
         analyzedAt: row.analyzed_at,
       })),
     });
