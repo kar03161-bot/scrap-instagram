@@ -28,8 +28,6 @@ const PORT = Number(process.env.PORT) || 3000;
 
 const igUsername = normalizeEnvSecret(process.env.IG_USERNAME);
 const igPassword = normalizeEnvSecret(process.env.IG_PASSWORD);
-const igSessionId = normalizeEnvSecret(process.env.IG_SESSIONID);
-const igCsrfToken = normalizeEnvSecret(process.env.IG_CSRFTOKEN);
 const headless = process.env.HEADLESS !== "false";
 /** 풀링 URL 우선 (Vercel/Neon 권장). neon() HTTP는 호스트 매핑 불일치 시 resource-not-found(404)가 날 수 있어 TCP(pg) 사용. */
 const databaseUrl =
@@ -244,10 +242,8 @@ app.use(express.static(path.join(__dirname, "../public")));
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
-    hasCredentials: Boolean(igSessionId || (igUsername && igPassword)),
+    hasCredentials: Boolean(igUsername && igPassword),
     hasDatabase: hasDatabaseConfig,
-    hasIgSessionId: Boolean(igSessionId),
-    hasIgCsrfToken: Boolean(igCsrfToken),
   });
 });
 
@@ -294,10 +290,9 @@ app.post("/api/influencers/check", async (req, res) => {
 });
 
 app.post("/api/analyze", async (req, res) => {
-  if (!igSessionId && (!igUsername || !igPassword)) {
+  if (!igUsername || !igPassword) {
     return res.status(400).json({
-      error:
-        ".env에 IG_SESSIONID 또는 IG_USERNAME/IG_PASSWORD가 설정되어 있지 않습니다. .env.example을 참고해 주세요.",
+      error: ".env에 IG_USERNAME과 IG_PASSWORD가 모두 설정되어 있어야 합니다.",
     });
   }
 
@@ -321,8 +316,6 @@ app.post("/api/analyze", async (req, res) => {
     const results = await analyzeInfluencers(list, {
       igUsername,
       igPassword,
-      igSessionId,
-      igCsrfToken,
       headless,
     });
     const savedResults = await saveInfluencerResults(results);
