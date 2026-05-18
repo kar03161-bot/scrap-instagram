@@ -1,7 +1,8 @@
 import "dotenv/config";
+import { neon } from "@neondatabase/serverless";
 import express from "express";
 import path from "path";
-import { createClient, createPool } from "@vercel/postgres";
+import { createClient } from "@vercel/postgres";
 import { fileURLToPath } from "url";
 import { analyzeInfluencers } from "./instagram-scraper.js";
 
@@ -17,7 +18,19 @@ const headless = process.env.HEADLESS !== "false";
 const databaseUrl =
   process.env.POSTGRES_URL?.trim() || process.env.POSTGRES_URL_NON_POOLING?.trim();
 const hasDatabaseConfig = Boolean(databaseUrl);
-let pooledDatabase;
+/** Vercel/Neon: WebSocket(pg Client) 경로는 404 등으로 실패할 수 있어 HTTP(neon)만 사용 */
+let neonHttpSql;
+
+function isLocalDatabaseUrl(url) {
+  if (!url) return false;
+  try {
+    const normalized = url.replace(/^postgresql:\/\//, "https://");
+    const host = new URL(normalized).hostname;
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
 
 async function dbQuery(strings, ...values) {
   if (!databaseUrl) {
@@ -26,18 +39,18 @@ async function dbQuery(strings, ...values) {
     );
   }
 
-  if (databaseUrl.includes("-pooler.")) {
-    pooledDatabase ||= createPool({ connectionString: databaseUrl });
-    return pooledDatabase.sql(strings, ...values);
+  if (isLocalDatabaseUrl(databaseUrl)) {
+    const client = createClient({ connectionString: databaseUrl });
+    await client.connect();
+    try {
+      return await client.sql(strings, ...values);
+    } finally {
+      await client.end();
+    }
   }
 
-  const client = createClient({ connectionString: databaseUrl });
-  await client.connect();
-  try {
-    return await client.sql(strings, ...values);
-  } finally {
-    await client.end();
-  }
+  neonHttpSql ||= neon(databaseUrl, { fullResults: true });
+  return neonHttpSql(strings, ...values);
 }
 
 /** @param {unknown} reason */
