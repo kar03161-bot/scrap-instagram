@@ -370,7 +370,7 @@
           <h2 class="card-title">계정 분석 시작</h2>
           <a class="btn-list" href="/result.html">분석목록</a>
         </div>
-        <p class="card-subtitle">사용자명을 입력해주세요</p>
+        <p class="card-subtitle">돈 쓸 만한 곳인지 함 봅시다</p>
 
         <label for="handles">인플루언서 아이디</label>
         <textarea
@@ -382,6 +382,8 @@
         <div class="section-divider">수집 항목</div>
         <div class="collect-grid" aria-label="수집 항목">
           <div class="collect-item">
+
+
             <img
               src="https://img.icons8.com/ios-filled/50/2b5ba8/conference-call.png"
               alt=""
@@ -418,6 +420,37 @@
       const handlesEl = document.getElementById("handles");
       const msg = document.getElementById("msg");
 
+      /** @param {unknown} value @param {string} fallback */
+      function formatApiError(value, fallback) {
+        if (value == null || value === "") return fallback;
+        if (typeof value === "string") return value;
+        if (typeof value === "object") {
+          const o = /** @type {Record<string, unknown>} */ (value);
+          if (typeof o.message === "string" && o.message.length > 0) return o.message;
+          if (typeof o.detail === "string" && o.detail.length > 0) return o.detail;
+          if (typeof o.error === "string" && o.error.length > 0) return o.error;
+          try {
+            const s = JSON.stringify(value);
+            if (s && s !== "{}") return s;
+          } catch {
+            /* ignore */
+          }
+        }
+        try {
+          return String(value);
+        } catch {
+          return fallback;
+        }
+      }
+
+      /** @param {string} text */
+      function showError(text) {
+        const div = document.createElement("div");
+        div.className = "error";
+        div.textContent = text;
+        msg.replaceChildren(div);
+      }
+
       btn.addEventListener("click", async () => {
         msg.innerHTML = "";
         const usernames = handlesEl.value;
@@ -431,10 +464,12 @@
           });
           const checkData = await checkRes.json().catch(() => ({}));
           if (!checkRes.ok) {
-            msg.innerHTML =
-              '<div class="error">' +
-              (checkData.error || "분석 이력 확인 중 오류가 발생했습니다.") +
-              "</div>";
+            showError(
+              formatApiError(
+                checkData.error,
+                "분석 이력 확인 중 오류가 발생했습니다.",
+              ),
+            );
             return;
           }
           if ((checkData.existing || []).length > 0) {
@@ -453,10 +488,9 @@
             if (data.error === "이미 분석한 계정입니다") {
               msg.innerHTML = '<div class="duplicate">이미 분석한 계정입니다</div>';
             } else {
-              msg.innerHTML =
-                '<div class="error">' +
-                (data.error || "요청 처리 중 오류가 발생했습니다.") +
-                "</div>";
+              showError(
+                formatApiError(data.error, "요청 처리 중 오류가 발생했습니다."),
+              );
             }
             return;
           }
@@ -471,10 +505,11 @@
           );
           window.location.href = "/result.html";
         } catch (e) {
-          msg.innerHTML =
-            '<div class="error">' +
-            (e && e.message ? e.message : String(e)) +
-            "</div>";
+          const text =
+            e instanceof Error
+              ? e.message
+              : formatApiError(e, "요청 처리 중 오류가 발생했습니다.");
+          showError(text);
         } finally {
           btn.disabled = false;
           btn.textContent = "분석 시작";

@@ -53,6 +53,32 @@ function resolveSparticuzChromiumBinDir() {
 const puppeteer = addExtra(vanillaPuppeteer);
 puppeteer.use(StealthPlugin());
 
+/** @param {unknown} reason */
+function errorMessageFromUnknown(reason) {
+  if (reason instanceof Error) {
+    return reason.message || reason.name || String(reason);
+  }
+  if (reason == null) {
+    return "";
+  }
+  if (typeof reason === "string") {
+    return reason;
+  }
+  if (typeof reason === "object") {
+    const msg = /** @type {{ message?: unknown }} */ (reason).message;
+    if (typeof msg === "string" && msg.length > 0) {
+      return msg;
+    }
+    try {
+      const s = JSON.stringify(reason);
+      if (s && s !== "{}") return s;
+    } catch {
+      /* ignore */
+    }
+  }
+  return String(reason);
+}
+
 const IG_ORIGIN = "https://www.instagram.com";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const USER_DATA_DIR = path.join(__dirname, "../.puppeteer-profile");
@@ -494,7 +520,7 @@ export async function analyzeInfluencers(usernames, creds) {
           followers: null,
           metaOgDescription: null,
           posts: [],
-          error: e instanceof Error ? e.message : String(e),
+          error: errorMessageFromUnknown(e),
         });
       }
     }

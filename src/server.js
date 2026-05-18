@@ -40,6 +40,41 @@ async function dbQuery(strings, ...values) {
   }
 }
 
+/** @param {unknown} reason */
+function messageFromUnknown(reason) {
+  if (reason instanceof Error) {
+    return reason.message || reason.name || "오류가 발생했습니다.";
+  }
+  if (reason == null) {
+    return "알 수 없는 오류가 발생했습니다.";
+  }
+  if (typeof reason === "string") {
+    return reason;
+  }
+  if (typeof reason === "object") {
+    const obj = /** @type {Record<string, unknown>} */ (reason);
+    const msg = obj.message;
+    if (typeof msg === "string" && msg.length > 0) {
+      return msg;
+    }
+    const err = obj.error;
+    if (typeof err === "string" && err.length > 0) {
+      return err;
+    }
+    try {
+      const s = JSON.stringify(reason);
+      if (s && s !== "{}") return s;
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    return String(reason);
+  } catch {
+    return "알 수 없는 오류가 발생했습니다.";
+  }
+}
+
 function normalizeUsernames(usernames) {
   if (Array.isArray(usernames)) {
     return usernames.map((u) => String(u).replace(/^@/, "").trim()).filter(Boolean);
@@ -191,8 +226,7 @@ app.get("/api/influencers", async (_req, res) => {
       })),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: messageFromUnknown(err) });
   }
 });
 
@@ -206,8 +240,7 @@ app.post("/api/influencers/check", async (req, res) => {
     const existing = await findExistingUsernames(list);
     res.json({ existing });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: messageFromUnknown(err) });
   }
 });
 
@@ -245,8 +278,7 @@ app.post("/api/analyze", async (req, res) => {
     const savedResults = await saveInfluencerResults(results);
     res.json({ results: savedResults });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: messageFromUnknown(err) });
   }
 });
 
