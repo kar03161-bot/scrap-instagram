@@ -92,7 +92,7 @@
 
       table {
         width: 100%;
-        min-width: 980px;
+        min-width: 1080px;
         border-collapse: collapse;
         font-size: 0.95rem;
       }
@@ -475,6 +475,7 @@
                   <div class="metric-sub">${fmt(row.comments)}</div>
                 </td>
                 <td class="er-cell">${fmtPercent(erPercent)}</td>
+                <td class="er-cell">${fmtPercent(row.reelEr)}</td>
                 <td>
                   <span class="grade-badge ${grade.className}">${grade.label}</span>
                 </td>
@@ -495,6 +496,7 @@
                   <th>평균 좋아요</th>
                   <th>평균 댓글</th>
                   <th>ER</th>
+                  <th>릴스 ER</th>
                   <th>등급</th>
                   <th>조회한 날짜</th>
                 </tr>

@@ -7,6 +7,7 @@ node_modules/
 
 # Puppeteer/Chrome runtime data
 .puppeteer-profile/
+.instagram-cookies.json
 screenshots/
 
 # Logs and local OS/editor files
