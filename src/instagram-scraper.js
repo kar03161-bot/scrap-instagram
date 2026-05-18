@@ -26,8 +26,12 @@ function resolveSparticuzChromiumBinDir() {
 
   try {
     if (typeof import.meta.resolve === "function") {
-      const resolved = fileURLToPath(import.meta.resolve("@sparticuz/chromium"));
-      const binDir = path.normalize(path.join(path.dirname(resolved), "..", "..", "bin"));
+      const resolved = fileURLToPath(
+        import.meta.resolve("@sparticuz/chromium"),
+      );
+      const binDir = path.normalize(
+        path.join(path.dirname(resolved), "..", "..", "bin"),
+      );
       if (fs.existsSync(path.join(binDir, "chromium.br"))) return binDir;
     }
   } catch {
@@ -36,13 +40,18 @@ function resolveSparticuzChromiumBinDir() {
 
   try {
     const resolved = require.resolve("@sparticuz/chromium");
-    const binDir = path.normalize(path.join(path.dirname(resolved), "..", "..", "bin"));
+    const binDir = path.normalize(
+      path.join(path.dirname(resolved), "..", "..", "bin"),
+    );
     if (fs.existsSync(path.join(binDir, "chromium.br"))) return binDir;
   } catch {
     /* ignore */
   }
 
-  const cwdBin = path.join(process.cwd(), "node_modules/@sparticuz/chromium/bin");
+  const cwdBin = path.join(
+    process.cwd(),
+    "node_modules/@sparticuz/chromium/bin",
+  );
   if (fs.existsSync(path.join(cwdBin, "chromium.br"))) {
     return path.normalize(cwdBin);
   }
@@ -134,7 +143,8 @@ async function pageShowsVisibleLoginForm(page) {
 /** 번들 Chrome이 없을 때 로컬 설치 Chrome 등으로 대체 */
 function resolveChromeExecutablePath() {
   const fromEnv =
-    process.env.PUPPETEER_EXECUTABLE_PATH?.trim() || process.env.CHROME_PATH?.trim();
+    process.env.PUPPETEER_EXECUTABLE_PATH?.trim() ||
+    process.env.CHROME_PATH?.trim();
   if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
 
   if (process.platform === "darwin") {
@@ -165,8 +175,8 @@ function resolveChromeExecutablePath() {
 function shouldUseSparticuzChromium() {
   return Boolean(
     process.env.VERCEL ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      process.env.AWS_EXECUTION_ENV,
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.AWS_EXECUTION_ENV,
   );
 }
 
@@ -200,7 +210,10 @@ async function buildLaunchOptions(creds) {
     return {
       loginHeadless: true,
       launchOpts: {
-        args: await vanillaPuppeteer.defaultArgs({ args: chromium.args, headless: "shell" }),
+        args: await vanillaPuppeteer.defaultArgs({
+          args: chromium.args,
+          headless: "shell",
+        }),
         defaultViewport,
         executablePath: await chromium.executablePath(chromiumBinDir),
         headless: "shell",
@@ -226,7 +239,11 @@ async function buildLaunchOptions(creds) {
       headless,
       userDataDir: USER_DATA_DIR,
       executablePath,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--window-size=1280,900"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--window-size=1280,900",
+      ],
       defaultViewport: { width: 1280, height: 900 },
     },
   };
@@ -240,16 +257,15 @@ function delay(ms) {
 export function parseCompactNumber(raw) {
   if (raw == null || raw === "") return null;
   const s = String(raw).trim().replace(/,/g, "");
-  const multi = /^([\d.]+)\s*(K|M|B|천만|千万|천|만|万|억)/i.exec(s);
+  const multi = /^([\d.]+)\s*([KMB千万억])/i.exec(s);
   if (multi) {
     let n = parseFloat(multi[1]);
     const u = multi[2].toUpperCase();
     if (u === "K") n *= 1e3;
     else if (u === "M") n *= 1e6;
     else if (u === "B") n *= 1e9;
-    else if (multi[2] === "천") n *= 1e3;
-    else if (multi[2] === "만" || multi[2] === "万") n *= 1e4;
-    else if (multi[2] === "천만" || multi[2] === "千万") n *= 1e7;
+    else if (multi[2] === "万") n *= 1e4;
+    else if (multi[2] === "千万") n *= 1e7;
     else if (multi[2] === "억") n *= 1e8;
     return Number.isFinite(n) ? Math.round(n) : null;
   }
@@ -275,38 +291,16 @@ export function parseLikesCommentsFromText(text) {
   let comments = null;
 
   const likeM =
-    text.match(/([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*likes?/i) ||
-    text.match(/좋아요\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?/i);
-  if (likeM) likes = parseCompactNumber(`${likeM[1]}${likeM[2] || ""}`);
+    text.match(/([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*\s*likes?/i) ||
+    text.match(/좋아요\s*([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*/i);
+  if (likeM) likes = parseCompactNumber(likeM[1]);
 
   const commentM =
-    text.match(/([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*comments?/i) ||
-    text.match(/댓글\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?/i);
-  if (commentM) comments = parseCompactNumber(`${commentM[1]}${commentM[2] || ""}`);
+    text.match(/([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*\s*comments?/i) ||
+    text.match(/댓글\s*([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*/i);
+  if (commentM) comments = parseCompactNumber(commentM[1]);
 
   return { likes, comments };
-}
-
-/** @param {string} text */
-export function parseViewsFromText(text) {
-  if (!text) return null;
-  const patterns = [
-    /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*views?\b/i,
-    /views?\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?/i,
-    /조회수\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?/i,
-    /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?\s*조회/i,
-    /재생\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?/i,
-    /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?\s*재생/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      return parseCompactNumber(`${match[1]}${match[2] || ""}`);
-    }
-  }
-
-  return null;
 }
 
 async function dismissBlockingDialogs(page) {
@@ -314,7 +308,9 @@ async function dismissBlockingDialogs(page) {
     try {
       const clicked = await page.evaluate(() => {
         const texts = ["Not Now", "나중에 하기", "Not now", "OK", "확인"];
-        const buttons = Array.from(document.querySelectorAll("button, [role='button']"));
+        const buttons = Array.from(
+          document.querySelectorAll("button, [role='button']"),
+        );
         for (const b of buttons) {
           const t = (b.innerText || b.textContent || "").trim();
           if (texts.some((x) => t.includes(x))) {
@@ -392,7 +388,10 @@ async function waitForManualLoginSessionReady(page, timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      if ((await hasInstagramSession(page)) && !(await instagramUiShowsLoggedOut(page))) {
+      if (
+        (await hasInstagramSession(page)) &&
+        !(await instagramUiShowsLoggedOut(page))
+      ) {
         return;
       }
     } catch {
@@ -439,7 +438,8 @@ async function resolveLoginSelectors(page) {
   for (const u of USERNAME_SELECTORS) {
     for (const p of PASSWORD_SELECTORS) {
       const ok = await page.evaluate(
-        (us, ps) => Boolean(document.querySelector(us) && document.querySelector(ps)),
+        (us, ps) =>
+          Boolean(document.querySelector(us) && document.querySelector(ps)),
         u,
         p,
       );
@@ -488,7 +488,10 @@ async function saveInstagramCookiesToFile(page, filePath) {
 }
 
 async function tryReuseSavedCookies(page, filePath) {
-  console.log("[instagram-scraper] tryReuseSavedCookies 시작", { filePath, exists: Boolean(filePath && fs.existsSync(filePath)) });
+  console.log("[instagram-scraper] tryReuseSavedCookies 시작", {
+    filePath,
+    exists: Boolean(filePath && fs.existsSync(filePath)),
+  });
   if (!filePath || !fs.existsSync(filePath)) return false;
 
   let list;
@@ -500,7 +503,9 @@ async function tryReuseSavedCookies(page, filePath) {
   if (!Array.isArray(list) || list.length === 0) return false;
 
   try {
-    await page.goto("about:blank", { waitUntil: "domcontentloaded", timeout: 15000 }).catch(() => {});
+    await page
+      .goto("about:blank", { waitUntil: "domcontentloaded", timeout: 15000 })
+      .catch(() => {});
     try {
       await page.setCookie(...list);
     } catch {
@@ -514,14 +519,20 @@ async function tryReuseSavedCookies(page, filePath) {
     await delay(1500);
     await dismissBlockingDialogs(page);
     if (!(await hasInstagramSession(page))) {
-      console.log("[instagram-scraper] tryReuseSavedCookies → sessionid 없음, 재사용 안 함");
+      console.log(
+        "[instagram-scraper] tryReuseSavedCookies → sessionid 없음, 재사용 안 함",
+      );
       return false;
     }
     if (await instagramUiShowsLoggedOut(page)) {
-      console.log("[instagram-scraper] tryReuseSavedCookies → 로그아웃 UI, 재사용 안 함");
+      console.log(
+        "[instagram-scraper] tryReuseSavedCookies → 로그아웃 UI, 재사용 안 함",
+      );
       return false;
     }
-    console.log("[instagram-scraper] tryReuseSavedCookies → 세션 유효, 재사용 성공");
+    console.log(
+      "[instagram-scraper] tryReuseSavedCookies → 세션 유효, 재사용 성공",
+    );
     return true;
   } catch (err) {
     console.warn(
@@ -536,7 +547,13 @@ async function tryReuseSavedCookies(page, filePath) {
  * 헤드리스용: 쿠키는 호출 전에 이미 비운 상태에서 시작.
  * 성공 시 cookieFilePath 에 저장.
  */
-async function performAutomatedPasswordLogin(page, username, password, headless, cookieFilePath) {
+async function performAutomatedPasswordLogin(
+  page,
+  username,
+  password,
+  headless,
+  cookieFilePath,
+) {
   await page.goto(`${IG_ORIGIN}/accounts/login/`, {
     waitUntil: "domcontentloaded",
     timeout: 90000,
@@ -558,7 +575,9 @@ async function performAutomatedPasswordLogin(page, username, password, headless,
     const loginLink = await page.$('a[href*="/accounts/login"]');
     if (loginLink) {
       await Promise.all([
-        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {}),
+        page
+          .waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30000 })
+          .catch(() => {}),
         loginLink.click(),
       ]);
       await delay(1200);
@@ -576,8 +595,12 @@ async function performAutomatedPasswordLogin(page, username, password, headless,
     await waitForManualLoginIfNeeded(page);
     await delay(1200);
     await dismissBlockingDialogs(page);
-    if ((await hasInstagramSession(page)) && !(await instagramUiShowsLoggedOut(page))) {
-      if (cookieFilePath) await saveInstagramCookiesToFile(page, cookieFilePath);
+    if (
+      (await hasInstagramSession(page)) &&
+      !(await instagramUiShowsLoggedOut(page))
+    ) {
+      if (cookieFilePath)
+        await saveInstagramCookiesToFile(page, cookieFilePath);
       return;
     }
     throw new Error(
@@ -596,12 +619,16 @@ async function performAutomatedPasswordLogin(page, username, password, headless,
     .catch(() => {});
 
   const clicked = await page.evaluate(() => {
-    const direct = document.querySelector('form button[type="submit"], button[type="submit"]');
+    const direct = document.querySelector(
+      'form button[type="submit"], button[type="submit"]',
+    );
     if (direct) {
       direct.click();
       return true;
     }
-    const byText = Array.from(document.querySelectorAll("button, [role='button']")).find((b) => {
+    const byText = Array.from(
+      document.querySelectorAll("button, [role='button']"),
+    ).find((b) => {
       const t = (b.textContent || "").trim().toLowerCase();
       return (
         t === "log in" ||
@@ -629,8 +656,12 @@ async function performAutomatedPasswordLogin(page, username, password, headless,
       await waitForManualLoginIfNeeded(page);
       await delay(1200);
       await dismissBlockingDialogs(page);
-      if ((await hasInstagramSession(page)) && !(await instagramUiShowsLoggedOut(page))) {
-        if (cookieFilePath) await saveInstagramCookiesToFile(page, cookieFilePath);
+      if (
+        (await hasInstagramSession(page)) &&
+        !(await instagramUiShowsLoggedOut(page))
+      ) {
+        if (cookieFilePath)
+          await saveInstagramCookiesToFile(page, cookieFilePath);
         return;
       }
     }
@@ -695,15 +726,23 @@ async function login(page, username, password, headless, cookieFilePath) {
   });
 
   if (await tryReuseSavedCookies(page, resolvedCookiePath)) {
-    console.log("[instagram-scraper] login 분기: 저장 쿠키 세션 재사용 후 return");
-    console.info(`[instagram-scraper] 저장된 쿠키로 세션 사용: ${resolvedCookiePath}`);
+    console.log(
+      "[instagram-scraper] login 분기: 저장 쿠키 세션 재사용 후 return",
+    );
+    console.info(
+      `[instagram-scraper] 저장된 쿠키로 세션 사용: ${resolvedCookiePath}`,
+    );
     return;
   }
 
-  console.log("[instagram-scraper] login 분기: 저장 쿠키 없음 또는 무효 → 다음 단계");
+  console.log(
+    "[instagram-scraper] login 분기: 저장 쿠키 없음 또는 무효 → 다음 단계",
+  );
 
   if (!headless) {
-    console.log("[instagram-scraper] login 분기: 수동 로그인(창 모드) — /accounts/login/ 이동");
+    console.log(
+      "[instagram-scraper] login 분기: 수동 로그인(창 모드) — /accounts/login/ 이동",
+    );
     console.info(
       "[instagram-scraper] 브라우저에서 Instagram에 로그인해 주세요. 완료되면 쿠키가 파일에 저장됩니다.",
     );
@@ -729,16 +768,24 @@ async function login(page, username, password, headless, cookieFilePath) {
       );
     }
 
-    console.log("[instagram-scraper] 수동 로그인: URL 확인 OK, 사용자 로그인 대기 시작", {
-      url: afterGoto,
-    });
+    console.log(
+      "[instagram-scraper] 수동 로그인: URL 확인 OK, 사용자 로그인 대기 시작",
+      {
+        url: afterGoto,
+      },
+    );
     await waitForManualLoginIfNeeded(page);
     await delay(1200);
     await dismissBlockingDialogs(page);
 
     await waitForManualLoginSessionReady(page, 75_000);
-    if (!(await hasInstagramSession(page)) || (await instagramUiShowsLoggedOut(page))) {
-      console.log("[instagram-scraper] 수동 로그인: 세션 미확인 → 메인 피드로 이동 후 재확인");
+    if (
+      !(await hasInstagramSession(page)) ||
+      (await instagramUiShowsLoggedOut(page))
+    ) {
+      console.log(
+        "[instagram-scraper] 수동 로그인: 세션 미확인 → 메인 피드로 이동 후 재확인",
+      );
       await refreshInstagramSessionProbe(page);
       await waitForManualLoginSessionReady(page, 45_000);
     }
@@ -761,7 +808,10 @@ async function login(page, username, password, headless, cookieFilePath) {
       await dismissBlockingDialogs(page);
     }
 
-    if (!(await hasInstagramSession(page)) || (await instagramUiShowsLoggedOut(page))) {
+    if (
+      !(await hasInstagramSession(page)) ||
+      (await instagramUiShowsLoggedOut(page))
+    ) {
       const url = page.url();
       const hasSess = await hasInstagramSession(page);
       const looksOut = await instagramUiShowsLoggedOut(page);
@@ -780,7 +830,9 @@ async function login(page, username, password, headless, cookieFilePath) {
   }
 
   if (!username || !password) {
-    console.log("[instagram-scraper] login 분기: 헤드리스인데 IG_USERNAME/PASSWORD 없음 → throw");
+    console.log(
+      "[instagram-scraper] login 분기: 헤드리스인데 IG_USERNAME/PASSWORD 없음 → throw",
+    );
     throw new Error(
       "저장된 Instagram 쿠키가 없거나 만료되었습니다. " +
         "로컬에서 HEADLESS=false로 서버를 실행해 브라우저에서 한 번 로그인하면 쿠키가 저장되거나, IG_USERNAME·IG_PASSWORD를 설정하세요.",
@@ -789,12 +841,21 @@ async function login(page, username, password, headless, cookieFilePath) {
 
   await clearBrowserCookiesForNewLogin(page);
   console.log("[instagram-scraper] login 분기: 헤드리스 자동 로그인(폼)");
-  await performAutomatedPasswordLogin(page, username, password, headless, resolvedCookiePath);
+  await performAutomatedPasswordLogin(
+    page,
+    username,
+    password,
+    headless,
+    resolvedCookiePath,
+  );
 }
 
 async function getOgDescription(page) {
   return page
-    .$eval('meta[property="og:description"]', (el) => el.getAttribute("content") || "")
+    .$eval(
+      'meta[property="og:description"]',
+      (el) => el.getAttribute("content") || "",
+    )
     .catch(() => "");
 }
 
@@ -815,13 +876,15 @@ function normalizeInstagramPostUrl(raw) {
 async function collectPostUrls(page) {
   const urls = new Set();
 
-  for (let step = 0; step < 12 && urls.size < 20; step++) {
+  for (let step = 0; step < 8 && urls.size < 10; step++) {
     const found = await page.evaluate(() => {
       const candidates = new Set();
 
       document.querySelectorAll("a[href]").forEach((a) => {
-        const href = (/** @type {HTMLAnchorElement} */ (a)).getAttribute("href") || "";
-        if (href.includes("/p/") || href.includes("/reel/")) candidates.add(href);
+        const href =
+          /** @type {HTMLAnchorElement} */ (a).getAttribute("href") || "";
+        if (href.includes("/p/") || href.includes("/reel/"))
+          candidates.add(href);
       });
 
       const html = document.documentElement.innerHTML.replace(/\\u002F/g, "/");
@@ -839,13 +902,13 @@ async function collectPostUrls(page) {
       if (normalized) urls.add(normalized);
     }
 
-    if (urls.size >= 20) break;
+    if (urls.size >= 10) break;
 
     await page.evaluate(() => window.scrollBy(0, 900));
     await delay(650);
   }
 
-  return [...urls].slice(0, 20);
+  return [...urls].slice(0, 10);
 }
 
 async function getProfileAccessMessage(page) {
@@ -856,7 +919,9 @@ async function getProfileAccessMessage(page) {
   if (/No Posts Yet|게시물 없음/.test(text)) {
     return "프로필에 공개 게시물이 없습니다.";
   }
-  if (/Sorry, this page isn't available|페이지를 사용할 수 없습니다/.test(text)) {
+  if (
+    /Sorry, this page isn't available|페이지를 사용할 수 없습니다/.test(text)
+  ) {
     return "계정을 찾을 수 없거나 접근할 수 없는 프로필입니다.";
   }
   if (/Log in|로그인/.test(text) && !/Followers|팔로워|게시물/.test(text)) {
@@ -881,53 +946,18 @@ async function scrapeProfileSummary(page, handle) {
   }
 
   const postUrls = await collectPostUrls(page);
-  const profileError = postUrls.length === 0 ? await getProfileAccessMessage(page) : null;
+  const profileError =
+    postUrls.length === 0 ? await getProfileAccessMessage(page) : null;
 
   const posts = [];
-  const reels = [];
   for (let i = 0; i < postUrls.length; i++) {
-    const postUrl = postUrls[i];
-    const isReel = postUrl.includes("/reel/");
-    const isRecentReel = isReel && i < 10;
-
-    if (i >= 10 && posts.length >= 10) {
-      break;
-    }
-    if (isReel && !isRecentReel) {
-      continue;
-    }
-    if (!isReel && posts.length >= 10) {
-      continue;
-    }
-
     await delay(900 + Math.random() * 700);
-    await page.goto(postUrl, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.goto(postUrls[i], { waitUntil: "networkidle2", timeout: 60000 });
     await delay(700);
 
     const desc = await getOgDescription(page);
-    if (isReel) {
-      let views = parseViewsFromText(desc);
-
-      if (views == null) {
-        const blob = await page.evaluate(() => {
-          const parts = [];
-          document.querySelectorAll("span, li, section, div").forEach((el) => {
-            const t = (el.innerText || "").trim();
-            if (t.length > 0 && t.length < 200) parts.push(t);
-          });
-          return parts.join(" | ");
-        });
-        views = parseViewsFromText(blob);
-      }
-
-      reels.push({
-        url: postUrl,
-        views,
-      });
-      continue;
-    }
-
     let { likes, comments } = parseLikesCommentsFromText(desc);
+
     if (likes == null || comments == null) {
       const blob = await page.evaluate(() => {
         const parts = [];
@@ -943,7 +973,7 @@ async function scrapeProfileSummary(page, handle) {
     }
 
     posts.push({
-      url: postUrl,
+      url: postUrls[i],
       likes,
       comments,
     });
@@ -955,7 +985,6 @@ async function scrapeProfileSummary(page, handle) {
     followers,
     metaOgDescription: og || null,
     posts,
-    reels,
     error: profileError,
   };
 }
@@ -988,14 +1017,28 @@ export async function analyzeInfluencers(usernames, creds) {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     );
 
-    const cookiePath = creds.cookiePath || path.join(__dirname, "../.instagram-cookies.json");
-    console.log("[instagram-scraper] login() 호출 전", { loginHeadless, cookiePath });
-    await login(page, creds.igUsername, creds.igPassword, loginHeadless, cookiePath);
+    const cookiePath =
+      creds.cookiePath || path.join(__dirname, "../.instagram-cookies.json");
+    console.log("[instagram-scraper] login() 호출 전", {
+      loginHeadless,
+      cookiePath,
+    });
+    await login(
+      page,
+      creds.igUsername,
+      creds.igPassword,
+      loginHeadless,
+      cookiePath,
+    );
     console.log("[instagram-scraper] login() 완료");
 
     const rows = [];
 
-    const uniqueHandles = [...new Set(usernames.map((u) => u.replace(/^@/, "").trim()).filter(Boolean))];
+    const uniqueHandles = [
+      ...new Set(
+        usernames.map((u) => u.replace(/^@/, "").trim()).filter(Boolean),
+      ),
+    ];
 
     for (const h of uniqueHandles) {
       console.log("[instagram-scraper] scrapeProfileSummary", { handle: h });
@@ -1007,20 +1050,21 @@ export async function analyzeInfluencers(usernames, creds) {
           handle: h,
           error: row.error ?? null,
           postCount: row.posts?.length ?? 0,
-          reelCount: row.reels?.length ?? 0,
         });
       } catch (e) {
-        console.warn("[instagram-scraper] scrapeProfileSummary 실패(행에 error 기록)", {
-          handle: h,
-          message: errorMessageFromUnknown(e),
-        });
+        console.warn(
+          "[instagram-scraper] scrapeProfileSummary 실패(행에 error 기록)",
+          {
+            handle: h,
+            message: errorMessageFromUnknown(e),
+          },
+        );
         rows.push({
           username: h.replace(/^@/, ""),
           profileUrl: `${IG_ORIGIN}/${encodeURIComponent(h)}/`,
           followers: null,
           metaOgDescription: null,
           posts: [],
-          reels: [],
           error: errorMessageFromUnknown(e),
         });
       }
