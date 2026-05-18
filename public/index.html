@@ -4,187 +4,385 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>인스타그램 인플루언서 분석</title>
+    <link rel="stylesheet" href="/css/style.css" />
     <style>
       :root {
+        --off-white: #f7f5f0;
+        --cream: #ede9e0;
+        --blue-deep: #1a3a5c;
+        --blue-mid: #2b5ba8;
+        --blue-light: #4a80d4;
+        --blue-pale: #d6e4f7;
+        --blue-ghost: #ebf2fc;
+        --ink: #1c1c1c;
+        --muted: #7a7a72;
+        --border: #d8d4cb;
         font-family:
           system-ui,
           -apple-system,
           Segoe UI,
           Roboto,
           sans-serif;
-        color: #121212;
-        background: #fafafa;
+        color: var(--ink);
+        background: var(--off-white);
       }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         margin: 0;
-        padding: 24px 16px 48px;
-        max-width: 960px;
+        min-height: 100vh;
+        background:
+          linear-gradient(var(--cream) 1px, transparent 1px),
+          linear-gradient(90deg, var(--cream) 1px, transparent 1px),
+          var(--off-white);
+        background-size: 28px 28px;
+      }
+
+      .page-shell {
+        width: min(1120px, calc(100% - 32px));
+        min-height: 100vh;
         margin-inline: auto;
+        padding: 40px 0;
+        display: grid;
+        grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.2fr);
+        align-items: center;
+        gap: 28px;
       }
+
+      .hero-panel {
+        min-height: 100%;
+        padding: 56px 44px;
+        border-radius: 28px;
+        background: var(--blue-mid);
+        color: var(--off-white);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        box-shadow: 0 24px 60px
+          color-mix(in srgb, var(--blue-deep) 24%, transparent);
+      }
+
       h1 {
-        font-size: 1.35rem;
-        font-weight: 650;
-        margin: 0 0 8px;
+        margin: 0;
+        font-size: 50px;
+        font-weight: 700;
+        line-height: 1.05;
       }
+
       p.lead {
-        margin: 0 0 20px;
-        color: #555;
+        margin: 18px 0 0;
+        color: var(--blue-ghost);
+        font-size: 20px;
         line-height: 1.5;
       }
+
+      .analysis-card {
+        position: relative;
+        padding: 56px 52px;
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        background: var(--off-white);
+        box-shadow:
+          0 22px 56px color-mix(in srgb, var(--blue-deep) 16%, transparent),
+          inset 0 5px 0 var(--blue-mid);
+      }
+
+      .card-title {
+        margin: 0;
+        color: var(--blue-deep);
+        font-size: clamp(1.55rem, 3vw, 2.1rem);
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+
+      .card-subtitle {
+        margin: 12px 0 36px;
+        color: var(--muted);
+        font-size: 1.02rem;
+        line-height: 1.5;
+      }
+
       label {
         display: block;
+        color: var(--blue-deep);
         font-weight: 600;
-        margin-bottom: 8px;
-        font-size: 0.95rem;
+        margin-bottom: 12px;
+        font-size: 0.96rem;
       }
+
       textarea {
         width: 100%;
-        min-height: 140px;
-        padding: 12px 14px;
-        border-radius: 10px;
-        border: 1px solid #dbdbdb;
-        font-size: 0.95rem;
-        box-sizing: border-box;
+        min-height: 180px;
+        padding: 24px 28px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: var(--cream);
+        color: var(--ink);
+        font-size: 1rem;
+        line-height: 1.7;
         resize: vertical;
       }
-      button {
-        margin-top: 12px;
-        padding: 10px 18px;
-        border: none;
-        border-radius: 8px;
-        background: linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045);
-        color: #fff;
-        font-weight: 650;
-        cursor: pointer;
-        font-size: 0.95rem;
+
+      textarea::placeholder {
+        color: var(--muted);
+        font-style: italic;
       }
-      button:disabled {
+
+      textarea:focus {
+        outline: 2px solid var(--blue-light);
+        border-color: var(--blue-light);
+      }
+
+      .section-divider {
+        margin: 44px 0 28px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+
+      .section-divider::before,
+      .section-divider::after {
+        content: "";
+        height: 1px;
+        flex: 1;
+        background: var(--border);
+      }
+
+      .collect-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .collect-item {
+        min-height: 98px;
+        padding: 18px 12px;
+        border: 1px solid var(--blue-mid);
+        border-radius: 12px;
+        background: var(--blue-ghost);
+        color: var(--blue-deep);
+        display: grid;
+        place-items: center;
+        gap: 8px;
+        text-align: center;
+        font-weight: 700;
+      }
+
+      .collect-item img {
+        width: 30px;
+        height: 30px;
+        object-fit: contain;
+      }
+
+      .btn-analyze {
+        width: 100%;
+        margin-top: 36px;
+        padding: 18px;
+        border: none;
+        border-radius: 14px;
+        background: var(--blue-mid);
+        color: var(--off-white);
+        font-weight: 750;
+        cursor: pointer;
+        font-size: 1.08rem;
+        letter-spacing: 0.02em;
+        transition:
+          background 0.2s,
+          transform 0.2s,
+          box-shadow 0.2s;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .btn-analyze:not(:disabled):hover {
+        background: var(--blue-deep);
+        transform: translateY(-1px);
+        box-shadow: 0 8px 24px
+          color-mix(in srgb, var(--blue-mid) 30%, transparent);
+      }
+
+      .btn-analyze:disabled {
         opacity: 0.55;
         cursor: not-allowed;
       }
+
       .note {
-        margin-top: 10px;
+        margin: 24px 0 0;
         font-size: 0.82rem;
-        color: #777;
+        color: var(--muted);
+        line-height: 1.55;
+        display: flex;
+        gap: 10px;
       }
+
+      .note::before {
+        content: "i";
+        width: 20px;
+        height: 20px;
+        border: 1px solid var(--border);
+        border-radius: 50%;
+        color: var(--muted);
+        display: inline-grid;
+        flex: 0 0 auto;
+        place-items: center;
+        font-size: 0.75rem;
+        font-weight: 700;
+      }
+
       .error {
         margin-top: 14px;
         padding: 12px 14px;
         border-radius: 8px;
-        background: #ffe8e8;
-        color: #8a1f1f;
+        background: var(--blue-ghost);
+        color: var(--blue-deep);
         white-space: pre-wrap;
       }
+
       table {
         width: 100%;
         border-collapse: collapse;
         margin-top: 24px;
         font-size: 0.88rem;
-        background: #fff;
+        background: var(--off-white);
         border-radius: 12px;
         overflow: hidden;
-        box-shadow: 0 1px 4px rgb(0 0 0 / 6%);
+        box-shadow: 0 1px 4px
+          color-mix(in srgb, var(--blue-deep) 8%, transparent);
       }
+
       th,
       td {
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--border);
         padding: 10px 10px;
         text-align: left;
         vertical-align: top;
       }
+
       th {
-        background: #f3f3f3;
+        background: var(--blue-ghost);
+        color: var(--blue-deep);
         font-weight: 650;
       }
+
       tr:last-child td {
         border-bottom: none;
       }
+
       .muted {
-        color: #888;
+        color: var(--muted);
       }
+
       .posts-cell ol {
         margin: 6px 0 0;
         padding-left: 18px;
       }
+
       .posts-cell li {
         margin-bottom: 6px;
       }
+
       code {
         font-size: 0.85em;
-        background: #f0f0f0;
+        background: var(--blue-ghost);
         padding: 2px 6px;
         border-radius: 4px;
+      }
+
+      a {
+        color: var(--blue-mid);
+      }
+
+      @media (max-width: 840px) {
+        .page-shell {
+          grid-template-columns: 1fr;
+          padding: 24px 0;
+        }
+
+        .hero-panel {
+          min-height: auto;
+          padding: 40px 28px;
+        }
+
+        .analysis-card {
+          padding: 40px 28px;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .collect-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
   <body>
-    <h1>인스타그램 인플루언서 분석을 해봅시다</h1>
-    <p class="lead">
-      아래에 인플루언서 사용자명을 입력하면 각 계정의
-      <strong>팔로워 수</strong>와 <strong>최근 게시물 10개</strong>의
-      좋아요·댓글 수를 수집합니다.
-    </p>
+    <main class="page-shell">
+      <section class="hero-panel" aria-label="서비스 소개">
+        <p class="hero-tag">
+          <span aria-hidden="true"></span>Instagram Analytics
+        </p>
+        <h1>계정 분석<br />시작</h1>
+        <p class="lead">제목과 서브제목을 넣을 수 있는 소개 영역입니다.</p>
+      </section>
 
-    <label for="handles">인플루언서 아이디 (줄바꿈 또는 쉼표로 구분)</label>
-    <textarea
-      id="handles"
-      placeholder="예:&#10;nasa&#10;instagram&#10;natgeo"
-      spellcheck="false"
-    ></textarea>
-    <button type="button" id="run">분석 시작</button>
-    <p class="note">
-      Instagram UI·정책 변경 시 일부 값이 비어 나올 수 있습니다. 자동화는
-      이용약관 및 관련 법규를 준수해야 합니다.
-    </p>
+      <section class="analysis-card" aria-label="계정 분석 입력">
+        <h2 class="card-title">계정 분석 시작</h2>
+        <p class="card-subtitle">사용자명을 입력하면 즉시 분석합니다</p>
 
-    <div id="msg"></div>
-    <div id="out"></div>
+        <label for="handles">인플루언서 아이디</label>
+        <textarea
+          id="handles"
+          placeholder="예: nasa&#10;instagram&#10;natgeo"
+          spellcheck="false"
+        ></textarea>
+
+        <div class="section-divider">수집 항목</div>
+        <div class="collect-grid" aria-label="수집 항목">
+          <div class="collect-item">
+            <img
+              src="https://img.icons8.com/ios-filled/50/2b5ba8/conference-call.png"
+              alt=""
+            />
+            <span>팔로워</span>
+          </div>
+          <div class="collect-item">
+            <img
+              src="https://img.icons8.com/ios-filled/50/2b5ba8/like--v1.png"
+              alt=""
+            />
+            <span>좋아요</span>
+          </div>
+          <div class="collect-item">
+            <img
+              src="https://img.icons8.com/ios-filled/50/2b5ba8/comments.png"
+              alt=""
+            />
+            <span>댓글</span>
+          </div>
+        </div>
+
+        <button type="button" id="run" class="btn-analyze">분석 시작</button>
+        <p class="note">
+          Instagram UI·정책 변경 시 일부 값이 비어 나올 수 있습니다. 자동화는
+          이용약관 및 관련 법규를 준수해야 합니다.
+        </p>
+
+        <div id="msg"></div>
+      </section>
+    </main>
 
     <script>
       const btn = document.getElementById("run");
       const handlesEl = document.getElementById("handles");
       const msg = document.getElementById("msg");
-      const out = document.getElementById("out");
-
-      function fmt(n) {
-        if (n == null || Number.isNaN(n)) return "—";
-        return n.toLocaleString("ko-KR");
-      }
-
-      function avg(values) {
-        const nums = values.filter(
-          (v) => typeof v === "number" && !Number.isNaN(v),
-        );
-        if (nums.length === 0) return null;
-        return nums.reduce((sum, v) => sum + v, 0) / nums.length;
-      }
-
-      function calcErPercent(row) {
-        if (!row.followers || row.followers <= 0) return null;
-        const posts = row.posts || [];
-        const avgLikes = avg(posts.map((p) => p.likes));
-        const avgComments = avg(posts.map((p) => p.comments));
-        if (avgLikes == null || avgComments == null) return null;
-        return ((avgLikes + avgComments) / row.followers) * 100;
-      }
-
-      function erGrade(erPercent) {
-        if (erPercent == null) return null;
-        if (erPercent >= 5) return "Nano";
-        if (erPercent >= 3) return "Micro";
-        if (erPercent >= 2) return "Macro";
-        if (erPercent >= 1) return "Mega";
-        return "1% 미만";
-      }
-
-      function fmtPercent(n) {
-        if (n == null || Number.isNaN(n)) return "—";
-        return `${n.toFixed(2)}%`;
-      }
 
       btn.addEventListener("click", async () => {
         msg.innerHTML = "";
-        out.innerHTML = "";
         const usernames = handlesEl.value;
         btn.disabled = true;
         btn.textContent = "분석 중… (시간이 걸릴 수 있습니다)";
@@ -204,36 +402,14 @@
           }
 
           const rows = data.results || [];
-          let html =
-            "<table><thead><tr><th>계정</th><th>팔로워</th><th>최근 게시물 (최대 10개)</th><th>비고</th></tr></thead><tbody>";
-
-          for (const r of rows) {
-            const erPercent = calcErPercent(r);
-            const grade = erGrade(erPercent);
-            const note = r.error
-              ? `<span class="muted">${r.error}</span>`
-              : erPercent == null
-                ? '<span class="muted">ER 계산 불가</span>'
-                : `ER ${fmtPercent(erPercent)}<br><strong>${grade}</strong>`;
-            const posts =
-              (r.posts || [])
-                .map(
-                  (p, i) =>
-                    `<li>#${i + 1} 좋아요 ${fmt(p.likes)}, 댓글 ${fmt(p.comments)} <span class="muted"><a href="${p.url}" target="_blank" rel="noopener">링크</a></span></li>`,
-                )
-                .join("") ||
-              '<span class="muted">게시물 링크를 찾지 못했습니다.</span>';
-
-            html += `<tr>
-              <td><a href="${r.profileUrl}" target="_blank" rel="noopener">@${r.username}</a></td>
-              <td>${fmt(r.followers)}</td>
-              <td class="posts-cell"><ol>${posts}</ol></td>
-              <td>${note}</td>
-            </tr>`;
-          }
-
-          html += "</tbody></table>";
-          out.innerHTML = html;
+          sessionStorage.setItem(
+            "instagramAnalysisResults",
+            JSON.stringify({
+              results: rows,
+              analyzedAt: new Date().toISOString(),
+            }),
+          );
+          window.location.href = "/result.html";
         } catch (e) {
           msg.innerHTML =
             '<div class="error">' +

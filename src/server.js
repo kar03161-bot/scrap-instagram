@@ -14,6 +14,7 @@ const igPassword = process.env.IG_PASSWORD?.trim();
 const headless = process.env.HEADLESS !== "false";
 
 app.use(express.json({ limit: "512kb" }));
+app.use("/css", express.static(path.join(__dirname, "../css")));
 app.use(express.static(path.join(__dirname, "../public")));
 
 app.get("/api/health", (_req, res) => {

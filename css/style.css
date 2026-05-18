@@ -10,3 +10,28 @@
   --muted: #7a7a72;
   --border: #d8d4cb;
 }
+
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  width: fit-content;
+  margin: 0 0 28px;
+  padding: 14px 28px;
+  border: 1px solid var(--blue-pale);
+  border-radius: 100px;
+  background: var(--blue-ghost);
+  color: var(--blue-mid);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.hero-tag span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--blue-light);
+}
