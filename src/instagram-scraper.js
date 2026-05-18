@@ -257,26 +257,104 @@ async function hasInstagramSession(page) {
   return cookies.some((cookie) => cookie.name === "sessionid" && cookie.value);
 }
 
-async function applyInstagramSessionCookie(page, sessionId) {
-  if (!sessionId) return false;
+/** @type {string[]} */
+const USERNAME_SELECTORS = [
+  'input[name="username"]',
+  'input[autocomplete="username"]',
+  'input[aria-label*="Phone number" i]',
+  'input[aria-label*="username" i]',
+  'input[aria-label*="전화번호" i]',
+  'input[aria-label*="사용자 이름" i]',
+  'form[method="post"] input[type="text"]:not([name="email"])',
+];
 
-  await page.setCookie({
-    name: "sessionid",
-    value: sessionId,
-    domain: ".instagram.com",
-    path: "/",
-    httpOnly: true,
-    secure: true,
-    sameSite: "None",
+/** @type {string[]} */
+const PASSWORD_SELECTORS = [
+  'input[name="password"]',
+  'input[type="password"]',
+  'input[autocomplete="current-password"]',
+  'input[aria-label*="Password" i]',
+  'input[aria-label*="비밀번호" i]',
+];
+
+async function resolveLoginSelectors(page) {
+  for (const u of USERNAME_SELECTORS) {
+    for (const p of PASSWORD_SELECTORS) {
+      const ok = await page.evaluate(
+        (us, ps) => Boolean(document.querySelector(us) && document.querySelector(ps)),
+        u,
+        p,
+      );
+      if (ok) return { usernameSelector: u, passwordSelector: p };
+    }
+  }
+  return null;
+}
+
+async function waitForLoginForm(page, timeoutMs = 40000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await isCheckpointOrBlockedPath(page)) return null;
+    const resolved = await resolveLoginSelectors(page);
+    if (resolved) return resolved;
+    await delay(450);
+  }
+  return null;
+}
+
+async function isCheckpointOrBlockedPath(page) {
+  return page.evaluate(() => {
+    const p = location.pathname;
+    return (
+      p.includes("/challenge") ||
+      p.includes("/accounts/suspended") ||
+      p.includes("/checkpoint")
+    );
   });
+}
+
+/**
+ * 세션 복원: sessionid 필수, csrftoken은 동일 브라우저에서 복사하면 로그인 페이지 스킵에 도움이 됨.
+ * @param {string | undefined} sessionId
+ * @param {string | undefined} csrfToken
+ */
+async function applyInstagramSessionCookie(page, sessionId, csrfToken) {
+  if (!sessionId?.trim()) return false;
+
+  await page.goto(IG_ORIGIN, { waitUntil: "domcontentloaded", timeout: 60000 });
+  await delay(400);
+  await dismissBlockingDialogs(page);
+
+  const cookiesToSet = [
+    {
+      name: "sessionid",
+      value: sessionId.trim(),
+      domain: ".instagram.com",
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+    },
+  ];
+  if (csrfToken?.trim()) {
+    cookiesToSet.push({
+      name: "csrftoken",
+      value: csrfToken.trim(),
+      domain: ".instagram.com",
+      path: "/",
+      secure: true,
+      sameSite: "Lax",
+    });
+  }
+  await page.setCookie(...cookiesToSet);
 
   await page.goto(IG_ORIGIN, {
     waitUntil: "networkidle2",
     timeout: 60000,
   });
-  await delay(800);
+  await delay(900);
   await dismissBlockingDialogs(page);
-  return hasInstagramSession(page);
+  return await hasInstagramSession(page);
 }
 
 async function waitForManualLoginIfNeeded(page) {
@@ -290,57 +368,110 @@ async function waitForManualLoginIfNeeded(page) {
   );
 }
 
-async function login(page, username, password, headless, sessionId) {
-  if (await applyInstagramSessionCookie(page, sessionId)) return;
+async function login(page, username, password, headless, sessionId, csrfToken) {
+  if (await applyInstagramSessionCookie(page, sessionId, csrfToken)) return;
 
   if (!username || !password) {
     throw new Error(
-      "IG_SESSIONID로 Instagram 세션을 복원하지 못했습니다. Vercel 환경 변수의 IG_SESSIONID 값을 새로 발급한 뒤 다시 배포해 주세요.",
+      "IG_SESSIONID(와 가능하면 IG_CSRFTOKEN)로 세션을 복원하지 못했습니다. " +
+        "Chrome에서 instagram.com 로그인 → 개발자도구 → Application → Cookies → instagram.com 에서 sessionid 값을 복사해 Vercel 환경 변수 IG_SESSIONID 로 넣고, " +
+        "같은 화면의 csrftoken 값을 IG_CSRFTOKEN 에도 넣은 뒤 재배포하세요.",
     );
   }
 
   await page.goto(IG_ORIGIN, {
-    waitUntil: "networkidle2",
-    timeout: 60000,
+    waitUntil: "domcontentloaded",
+    timeout: 90000,
   });
-  await delay(800);
+  await delay(900);
   await dismissBlockingDialogs(page);
 
   if (await hasInstagramSession(page)) return;
 
   await page.goto(`${IG_ORIGIN}/accounts/login/`, {
-    waitUntil: "networkidle2",
-    timeout: 60000,
+    waitUntil: "domcontentloaded",
+    timeout: 90000,
   });
-  await delay(800);
+  await delay(1000);
   await dismissBlockingDialogs(page);
 
-  const usernameInput = await page.$('input[name="username"]');
-  if (!usernameInput) {
+  if (await isCheckpointOrBlockedPath(page)) {
+    throw new Error(
+      "Instagram 보안 확인·챌린지 화면입니다. " +
+        (headless
+          ? "Vercel에서는 이 화면을 눈으로 통과할 수 없으니, 로컬 Chrome에서 로그인한 뒤 sessionid(·csrftoken)를 환경 변수로 넣어 주세요."
+          : "브라우저 창에서 확인을 완료한 뒤 다시 시도하거나, IG_SESSIONID를 설정하세요."),
+    );
+  }
+
+  let form = await waitForLoginForm(page);
+  if (!form) {
+    const loginLink = await page.$('a[href*="/accounts/login"]');
+    if (loginLink) {
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {}),
+        loginLink.click(),
+      ]);
+      await delay(1200);
+      await dismissBlockingDialogs(page);
+      form = await waitForLoginForm(page, 25000);
+    }
+  }
+
+  if (!form) {
     if (headless) {
       throw new Error(
-        "Instagram 로그인 입력칸을 찾지 못했습니다. Vercel에서는 보안 확인/챌린지 화면을 수동으로 통과할 수 없으므로 IG_SESSIONID 환경 변수를 설정해 주세요.",
+        "Instagram 로그인 폼을 찾지 못했습니다(동의 화면·챌린지·UI 변경 가능). " +
+          "Vercel 배포에서는 IG_SESSIONID(필수)와 IG_CSRFTOKEN(권장) 환경 변수를 설정하세요. " +
+          "값은 로그인된 Chrome → F12 → Application → Cookies → https://www.instagram.com 에서 복사합니다.",
       );
     }
-    // HEADLESS=false 상태에서는 사용자가 직접 로그인할 수 있도록 최대 2분 기다린다.
     await waitForManualLoginIfNeeded(page);
     await delay(1200);
     await dismissBlockingDialogs(page);
     if (await hasInstagramSession(page)) return;
     throw new Error(
-      "로그인 입력칸을 찾지 못했습니다. HEADLESS=false로 실행한 뒤 열린 브라우저에서 수동 로그인 완료 후 다시 분석해 주세요.",
+      "로그인 화면을 찾지 못했습니다. 터미널에서 HEADLESS=false 로 서버를 실행하면 Chrome 창이 열립니다. " +
+        "창이 안 보이면 .env에 HEADLESS=false 가 있는지 확인한 뒤 서버를 다시 시작하세요.",
     );
   }
 
-  await page.type('input[name="username"]', username, { delay: 20 });
-  await page.type('input[name="password"]', password, { delay: 20 });
+  await page.click(form.usernameSelector, { clickCount: 3 }).catch(() => {});
+  await page.type(form.usernameSelector, username, { delay: 25 });
+  await page.click(form.passwordSelector, { clickCount: 3 }).catch(() => {});
+  await page.type(form.passwordSelector, password, { delay: 25 });
 
-  await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {}),
-    page.click('button[type="submit"]'),
-  ]);
+  const navPromise = page
+    .waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 })
+    .catch(() => {});
 
-  await delay(2500);
+  const clicked = await page.evaluate(() => {
+    const direct = document.querySelector('form button[type="submit"], button[type="submit"]');
+    if (direct) {
+      direct.click();
+      return true;
+    }
+    const byText = Array.from(document.querySelectorAll("button, [role='button']")).find((b) => {
+      const t = (b.textContent || "").trim().toLowerCase();
+      return (
+        t === "log in" ||
+        t.includes("log in") ||
+        t === "로그인" ||
+        (t.includes("로그인") && t.length < 20)
+      );
+    });
+    if (byText) {
+      byText.click();
+      return true;
+    }
+    return false;
+  });
+  if (!clicked) {
+    await page.click('button[type="submit"]').catch(() => {});
+  }
+
+  await navPromise;
+  await delay(2800);
   await dismissBlockingDialogs(page);
 
   if (!(await hasInstagramSession(page))) {
@@ -351,7 +482,8 @@ async function login(page, username, password, headless, sessionId) {
       if (await hasInstagramSession(page)) return;
     }
     throw new Error(
-      "로그인에 실패했거나 추가 확인(2단계 인증·보안 확인)이 필요합니다. 브라우저에서 한 번 로그인해 보거나 IG_USERNAME/IG_PASSWORD를 확인하세요.",
+      "로그인에 실패했거나 추가 확인(2단계 인증·보안 확인)이 필요합니다. " +
+        "비밀번호를 확인하거나, 로컬에서 HEADLESS=false로 한 번 로그인한 뒤 sessionid를 IG_SESSIONID로 쓰세요.",
     );
   }
 }
@@ -489,7 +621,7 @@ async function scrapeProfileSummary(page, handle) {
 
 /**
  * @param {string[]} usernames
- * @param {{ igUsername?: string; igPassword?: string; igSessionId?: string; headless?: boolean }} creds
+ * @param {{ igUsername?: string; igPassword?: string; igSessionId?: string; igCsrfToken?: string; headless?: boolean }} creds
  */
 export async function analyzeInfluencers(usernames, creds) {
   const { launchOpts, loginHeadless } = await buildLaunchOptions(creds);
@@ -499,10 +631,17 @@ export async function analyzeInfluencers(usernames, creds) {
   try {
     const page = await browser.newPage();
     await page.setUserAgent(
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     );
 
-    await login(page, creds.igUsername, creds.igPassword, loginHeadless, creds.igSessionId);
+    await login(
+      page,
+      creds.igUsername,
+      creds.igPassword,
+      loginHeadless,
+      creds.igSessionId,
+      creds.igCsrfToken,
+    );
 
     const rows = [];
 

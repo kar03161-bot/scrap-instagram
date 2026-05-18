@@ -15,6 +15,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const igUsername = process.env.IG_USERNAME?.trim();
 const igPassword = process.env.IG_PASSWORD?.trim();
 const igSessionId = process.env.IG_SESSIONID?.trim();
+const igCsrfToken = process.env.IG_CSRFTOKEN?.trim();
 const headless = process.env.HEADLESS !== "false";
 /** 풀링 URL 우선 (Vercel/Neon 권장). neon() HTTP는 호스트 매핑 불일치 시 resource-not-found(404)가 날 수 있어 TCP(pg) 사용. */
 const databaseUrl =
@@ -222,6 +223,8 @@ app.get("/api/health", (_req, res) => {
     ok: true,
     hasCredentials: Boolean(igSessionId || (igUsername && igPassword)),
     hasDatabase: hasDatabaseConfig,
+    hasIgSessionId: Boolean(igSessionId),
+    hasIgCsrfToken: Boolean(igCsrfToken),
   });
 });
 
@@ -296,6 +299,7 @@ app.post("/api/analyze", async (req, res) => {
       igUsername,
       igPassword,
       igSessionId,
+      igCsrfToken,
       headless,
     });
     const savedResults = await saveInfluencerResults(results);
@@ -308,6 +312,13 @@ app.post("/api/analyze", async (req, res) => {
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`서버 실행 중: http://localhost:${PORT}`);
+    if (headless) {
+      console.warn(
+        "[안내] 로그인용 Chrome 창을 보려면 .env에 HEADLESS=false 로 저장한 뒤 서버를 다시 시작하세요.",
+      );
+    } else {
+      console.log("[안내] Chrome 창이 열립니다. Instagram 보안·동의 화면은 브라우저에서 처리할 수 있습니다.");
+    }
     if (!igUsername || !igPassword) {
       console.warn("[경고] IG_USERNAME / IG_PASSWORD 가 .env에 없습니다.");
     }
