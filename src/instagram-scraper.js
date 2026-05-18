@@ -105,77 +105,6 @@ async function getInstagramCookiesJar(page) {
   return [...byKey.values()];
 }
 
-/**
- * Vercel/서버용: 환경변수 `IG_SESSIONID`(·`IG_CSRFTOKEN`)을 브라우저에 넣고 피드 진입 여부로 검증.
- * 집/로컬에서 복사한 sessionid는 데이터센터 IP에서 거절되는 경우가 많다.
- * @param {string | undefined} sessionId
- * @param {string | undefined} csrfToken
- */
-async function tryApplyEnvSessionCookies(page, sessionId, csrfToken) {
-  const sid = sessionId?.trim();
-  if (!sid) return false;
-
-  console.log("[instagram-scraper] IG_SESSIONID 환경변수로 세션 시도");
-  try {
-    await page
-      .goto("about:blank", { waitUntil: "domcontentloaded", timeout: 15000 })
-      .catch(() => {});
-
-    const cookies = [
-      {
-        name: "sessionid",
-        value: sid,
-        domain: ".instagram.com",
-        path: "/",
-        secure: true,
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ];
-    const csrf = csrfToken?.trim();
-    if (csrf) {
-      cookies.push({
-        name: "csrftoken",
-        value: csrf,
-        domain: ".instagram.com",
-        path: "/",
-        secure: true,
-        httpOnly: false,
-        sameSite: "Lax",
-      });
-    }
-
-    await page.setCookie(...cookies);
-    await page.goto(IG_ORIGIN, {
-      waitUntil: "domcontentloaded",
-      timeout: 90000,
-    });
-    await delay(1500);
-    await dismissBlockingDialogs(page);
-
-    if (!(await hasInstagramSession(page))) {
-      console.warn(
-        "[instagram-scraper] IG_SESSIONID 적용 후에도 sessionid 쿠키가 보이지 않습니다.",
-      );
-      return false;
-    }
-    if (await instagramUiShowsLoggedOut(page)) {
-      console.warn(
-        "[instagram-scraper] IG_SESSIONID로 열었으나 로그아웃 UI — 세션 무효 또는 IP/환경 불일치(Vercel 등).",
-      );
-      return false;
-    }
-    console.log("[instagram-scraper] IG_SESSIONID 환경변수 세션 사용 성공");
-    return true;
-  } catch (err) {
-    console.warn(
-      "[instagram-scraper] IG_SESSIONID 적용 중 오류:",
-      err instanceof Error ? err.message : err,
-    );
-    return false;
-  }
-}
-
 /** @param {string} path */
 function instagramPathStillInAuthFlow(path) {
   const p = path || "";
@@ -328,15 +257,16 @@ function delay(ms) {
 export function parseCompactNumber(raw) {
   if (raw == null || raw === "") return null;
   const s = String(raw).trim().replace(/,/g, "");
-  const multi = /^([\d.]+)\s*([KMB千万억])/i.exec(s);
+  const multi = /^([\d.]+)\s*(K|M|B|천만|千万|천|만|万|억)/i.exec(s);
   if (multi) {
     let n = parseFloat(multi[1]);
     const u = multi[2].toUpperCase();
     if (u === "K") n *= 1e3;
     else if (u === "M") n *= 1e6;
     else if (u === "B") n *= 1e9;
-    else if (multi[2] === "万") n *= 1e4;
-    else if (multi[2] === "千万") n *= 1e7;
+    else if (multi[2] === "천") n *= 1e3;
+    else if (multi[2] === "만" || multi[2] === "万") n *= 1e4;
+    else if (multi[2] === "천만" || multi[2] === "千万") n *= 1e7;
     else if (multi[2] === "억") n *= 1e8;
     return Number.isFinite(n) ? Math.round(n) : null;
   }
@@ -362,16 +292,47 @@ export function parseLikesCommentsFromText(text) {
   let comments = null;
 
   const likeM =
-    text.match(/([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*\s*likes?/i) ||
-    text.match(/좋아요\s*([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*/i);
-  if (likeM) likes = parseCompactNumber(likeM[1]);
+    text.match(
+      /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*likes?/i,
+    ) ||
+    text.match(
+      /좋아요\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?/i,
+    );
+  if (likeM) likes = parseCompactNumber(`${likeM[1]}${likeM[2] || ""}`);
 
   const commentM =
-    text.match(/([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*\s*comments?/i) ||
-    text.match(/댓글\s*([\d,.]+(?:\.\d+)?)\s*[KMBkmb千万억]*/i);
-  if (commentM) comments = parseCompactNumber(commentM[1]);
+    text.match(
+      /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*comments?/i,
+    ) ||
+    text.match(
+      /댓글\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?/i,
+    );
+  if (commentM)
+    comments = parseCompactNumber(`${commentM[1]}${commentM[2] || ""}`);
 
   return { likes, comments };
+}
+
+/** @param {string} text */
+export function parseViewsFromText(text) {
+  if (!text) return null;
+  const patterns = [
+    /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*views?\b/i,
+    /views?\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?/i,
+    /조회수\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?/i,
+    /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?\s*조회/i,
+    /재생\s*([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?/i,
+    /([\d,.]+(?:\.\d+)?)\s*(K|M|B|k|m|b|천만|千万|천|만|万|억)?\s*(?:회)?\s*재생/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return parseCompactNumber(`${match[1]}${match[2] || ""}`);
+    }
+  }
+
+  return null;
 }
 
 async function dismissBlockingDialogs(page) {
@@ -780,21 +741,12 @@ async function waitForManualLoginIfNeeded(page) {
 }
 
 /**
- * 1) env IG_SESSIONID(+csrftoken) 있으면 우선 적용 (Vercel 배포)
- * 2) cookiePath JSON이 있으면 적용 후 유효하면 그대로 사용
- * 3) 헤드리스가 아니면: 쿠키 초기화 → 로그인 페이지에서 수동 로그인 대기 → cookiePath 저장
- * 4) 헤드리스면: 쿠키 초기화 → IG_USERNAME/IG_PASSWORD 자동 로그인 → cookiePath 저장
+ * 1) cookiePath JSON이 있으면 적용 후 유효하면 그대로 사용
+ * 2) 헤드리스가 아니면: 쿠키 초기화 → 로그인 페이지에서 수동 로그인 대기 → cookiePath 저장
+ * 3) 헤드리스면: 쿠키 초기화 → IG_USERNAME/IG_PASSWORD 자동 로그인 → cookiePath 저장
  * @param {string} cookieFilePath
- * @param {{ igSessionId?: string; igCsrfToken?: string }} [envFromServer]
  */
-async function login(
-  page,
-  username,
-  password,
-  headless,
-  cookieFilePath,
-  envFromServer,
-) {
+async function login(page, username, password, headless, cookieFilePath) {
   const resolvedCookiePath =
     cookieFilePath || path.join(__dirname, "../.instagram-cookies.json");
 
@@ -802,26 +754,8 @@ async function login(
     headless,
     hasUsername: Boolean(username),
     hasPassword: Boolean(password),
-    hasEnvSessionId: Boolean(envFromServer?.igSessionId?.trim()),
     resolvedCookiePath,
   });
-
-  if (envFromServer?.igSessionId?.trim()) {
-    const applied = await tryApplyEnvSessionCookies(
-      page,
-      envFromServer.igSessionId,
-      envFromServer.igCsrfToken,
-    );
-    if (applied) {
-      console.log(
-        "[instagram-scraper] login 분기: 환경변수 IG_SESSIONID 세션 사용 후 return",
-      );
-      return;
-    }
-    console.log(
-      "[instagram-scraper] IG_SESSIONID 무효·거부 — 저장 쿠키 또는 아이디/비번 로그인 시도",
-    );
-  }
 
   if (await tryReuseSavedCookies(page, resolvedCookiePath)) {
     console.log(
@@ -931,14 +865,9 @@ async function login(
     console.log(
       "[instagram-scraper] login 분기: 헤드리스인데 IG_USERNAME/PASSWORD 없음 → throw",
     );
-    const vercelHint =
-      process.env.VERCEL && envFromServer?.igSessionId
-        ? " Vercel에서는 로컬 PC에서 복사한 IG_SESSIONID가 IP 불일치로 거절되는 경우가 많습니다. 프로젝트에 IG_USERNAME·IG_PASSWORD를 설정해 서버에서 자동 로그인하거나, 가능한 경우 데이터센터에서 유효한 세션을 사용해 주세요."
-        : "";
     throw new Error(
       "저장된 Instagram 쿠키가 없거나 만료되었습니다. " +
-        "로컬에서 HEADLESS=false로 서버를 실행해 브라우저에서 한 번 로그인하면 쿠키가 저장되거나, IG_USERNAME·IG_PASSWORD 또는 유효한 IG_SESSIONID를 설정하세요." +
-        vercelHint,
+        "로컬에서 HEADLESS=false로 서버를 실행해 브라우저에서 한 번 로그인하면 쿠키가 저장되거나, IG_USERNAME·IG_PASSWORD를 설정하세요.",
     );
   }
 
@@ -979,7 +908,7 @@ function normalizeInstagramPostUrl(raw) {
 async function collectPostUrls(page) {
   const urls = new Set();
 
-  for (let step = 0; step < 8 && urls.size < 10; step++) {
+  for (let step = 0; step < 12 && urls.size < 20; step++) {
     const found = await page.evaluate(() => {
       const candidates = new Set();
 
@@ -1005,13 +934,13 @@ async function collectPostUrls(page) {
       if (normalized) urls.add(normalized);
     }
 
-    if (urls.size >= 10) break;
+    if (urls.size >= 20) break;
 
     await page.evaluate(() => window.scrollBy(0, 900));
     await delay(650);
   }
 
-  return [...urls].slice(0, 10);
+  return [...urls].slice(0, 20);
 }
 
 async function getProfileAccessMessage(page) {
@@ -1053,14 +982,50 @@ async function scrapeProfileSummary(page, handle) {
     postUrls.length === 0 ? await getProfileAccessMessage(page) : null;
 
   const posts = [];
+  const reels = [];
   for (let i = 0; i < postUrls.length; i++) {
+    const postUrl = postUrls[i];
+    const isReel = postUrl.includes("/reel/");
+    const isRecentReel = isReel && i < 10;
+
+    if (i >= 10 && posts.length >= 10) {
+      break;
+    }
+    if (isReel && !isRecentReel) {
+      continue;
+    }
+    if (!isReel && posts.length >= 10) {
+      continue;
+    }
+
     await delay(900 + Math.random() * 700);
-    await page.goto(postUrls[i], { waitUntil: "networkidle2", timeout: 60000 });
+    await page.goto(postUrl, { waitUntil: "networkidle2", timeout: 60000 });
     await delay(700);
 
     const desc = await getOgDescription(page);
-    let { likes, comments } = parseLikesCommentsFromText(desc);
+    if (isReel) {
+      let views = parseViewsFromText(desc);
 
+      if (views == null) {
+        const blob = await page.evaluate(() => {
+          const parts = [];
+          document.querySelectorAll("span, li, section, div").forEach((el) => {
+            const t = (el.innerText || "").trim();
+            if (t.length > 0 && t.length < 200) parts.push(t);
+          });
+          return parts.join(" | ");
+        });
+        views = parseViewsFromText(blob);
+      }
+
+      reels.push({
+        url: postUrl,
+        views,
+      });
+      continue;
+    }
+
+    let { likes, comments } = parseLikesCommentsFromText(desc);
     if (likes == null || comments == null) {
       const blob = await page.evaluate(() => {
         const parts = [];
@@ -1076,7 +1041,7 @@ async function scrapeProfileSummary(page, handle) {
     }
 
     posts.push({
-      url: postUrls[i],
+      url: postUrl,
       likes,
       comments,
     });
@@ -1088,27 +1053,20 @@ async function scrapeProfileSummary(page, handle) {
     followers,
     metaOgDescription: og || null,
     posts,
+    reels,
     error: profileError,
   };
 }
 
 /**
  * @param {string[]} usernames
- * @param {{
- *   igUsername?: string;
- *   igPassword?: string;
- *   igSessionId?: string;
- *   igCsrfToken?: string;
- *   headless?: boolean;
- *   cookiePath?: string;
- * }} creds
+ * @param {{ igUsername?: string; igPassword?: string; headless?: boolean; cookiePath?: string }} creds
  */
 export async function analyzeInfluencers(usernames, creds) {
   console.log("[instagram-scraper] analyzeInfluencers 시작", {
     userCount: usernames.length,
     credsHeadless: creds.headless,
     hasIgUsername: Boolean(creds.igUsername),
-    hasIgSessionId: Boolean(creds.igSessionId?.trim()),
     cookiePath: creds.cookiePath,
   });
 
@@ -1140,10 +1098,6 @@ export async function analyzeInfluencers(usernames, creds) {
       creds.igPassword,
       loginHeadless,
       cookiePath,
-      {
-        igSessionId: creds.igSessionId,
-        igCsrfToken: creds.igCsrfToken,
-      },
     );
     console.log("[instagram-scraper] login() 완료");
 
@@ -1165,6 +1119,7 @@ export async function analyzeInfluencers(usernames, creds) {
           handle: h,
           error: row.error ?? null,
           postCount: row.posts?.length ?? 0,
+          reelCount: row.reels?.length ?? 0,
         });
       } catch (e) {
         console.warn(
@@ -1180,6 +1135,7 @@ export async function analyzeInfluencers(usernames, creds) {
           followers: null,
           metaOgDescription: null,
           posts: [],
+          reels: [],
           error: errorMessageFromUnknown(e),
         });
       }
