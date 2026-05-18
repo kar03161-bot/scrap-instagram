@@ -130,12 +130,6 @@ function enrichInfluencerResult(row) {
 }
 
 async function ensureInfluencerTable() {
-  if (!hasDatabaseConfig) {
-    throw new Error(
-      "Vercel DB 연결 정보(POSTGRES_URL 또는 POSTGRES_URL_NON_POOLING)가 설정되어 있지 않습니다.",
-    );
-  }
-
   await dbQuery`
     CREATE TABLE IF NOT EXISTS influencer (
       id SERIAL PRIMARY KEY,
@@ -151,6 +145,9 @@ async function ensureInfluencerTable() {
 }
 
 async function findExistingUsernames(usernames) {
+  if (!hasDatabaseConfig) {
+    return [];
+  }
   await ensureInfluencerTable();
   const clean = [...new Set(usernames.map((u) => u.toLowerCase()))];
   if (clean.length === 0) return [];
@@ -170,9 +167,14 @@ async function findExistingUsernames(usernames) {
 }
 
 async function saveInfluencerResults(results) {
+  const enriched = results.map(enrichInfluencerResult);
+  if (!hasDatabaseConfig) {
+    return enriched;
+  }
+
   await ensureInfluencerTable();
 
-  for (const row of results.map(enrichInfluencerResult)) {
+  for (const row of enriched) {
     await dbQuery`
       INSERT INTO influencer (username, followers, likes, comments, er, grade, analyzed_at)
       VALUES (
@@ -194,7 +196,7 @@ async function saveInfluencerResults(results) {
     `;
   }
 
-  return results.map(enrichInfluencerResult);
+  return enriched;
 }
 
 app.use(express.json({ limit: "512kb" }));
@@ -202,11 +204,18 @@ app.use(express.json({ limit: "512kb" }));
 app.use(express.static(path.join(__dirname, "../public")));
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, hasCredentials: Boolean(igSessionId || (igUsername && igPassword)) });
+  res.json({
+    ok: true,
+    hasCredentials: Boolean(igSessionId || (igUsername && igPassword)),
+    hasDatabase: hasDatabaseConfig,
+  });
 });
 
 app.get("/api/influencers", async (_req, res) => {
   try {
+    if (!hasDatabaseConfig) {
+      return res.json({ results: [] });
+    }
     await ensureInfluencerTable();
     const { rows } = await dbQuery`
       SELECT username, followers, likes, comments, er, grade, analyzed_at
