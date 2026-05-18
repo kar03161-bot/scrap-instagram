@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
-import { sql } from "@vercel/postgres";
+import { createClient, createPool } from "@vercel/postgres";
 import { fileURLToPath } from "url";
 import { analyzeInfluencers } from "./instagram-scraper.js";
 
@@ -14,7 +14,31 @@ const igUsername = process.env.IG_USERNAME?.trim();
 const igPassword = process.env.IG_PASSWORD?.trim();
 const igSessionId = process.env.IG_SESSIONID?.trim();
 const headless = process.env.HEADLESS !== "false";
-const hasDatabaseConfig = Boolean(process.env.POSTGRES_URL?.trim());
+const databaseUrl =
+  process.env.POSTGRES_URL?.trim() || process.env.POSTGRES_URL_NON_POOLING?.trim();
+const hasDatabaseConfig = Boolean(databaseUrl);
+let pooledDatabase;
+
+async function dbQuery(strings, ...values) {
+  if (!databaseUrl) {
+    throw new Error(
+      "Vercel DB 연결 정보(POSTGRES_URL 또는 POSTGRES_URL_NON_POOLING)가 설정되어 있지 않습니다.",
+    );
+  }
+
+  if (databaseUrl.includes("-pooler.")) {
+    pooledDatabase ||= createPool({ connectionString: databaseUrl });
+    return pooledDatabase.sql(strings, ...values);
+  }
+
+  const client = createClient({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    return await client.sql(strings, ...values);
+  } finally {
+    await client.end();
+  }
+}
 
 function normalizeUsernames(usernames) {
   if (Array.isArray(usernames)) {
@@ -72,10 +96,12 @@ function enrichInfluencerResult(row) {
 
 async function ensureInfluencerTable() {
   if (!hasDatabaseConfig) {
-    throw new Error("Vercel DB 연결 정보(POSTGRES_URL)가 설정되어 있지 않습니다.");
+    throw new Error(
+      "Vercel DB 연결 정보(POSTGRES_URL 또는 POSTGRES_URL_NON_POOLING)가 설정되어 있지 않습니다.",
+    );
   }
 
-  await sql`
+  await dbQuery`
     CREATE TABLE IF NOT EXISTS influencer (
       id SERIAL PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
@@ -96,7 +122,7 @@ async function findExistingUsernames(usernames) {
 
   const existing = [];
   for (const username of clean) {
-    const { rows } = await sql`
+    const { rows } = await dbQuery`
       SELECT username
       FROM influencer
       WHERE LOWER(username) = ${username}
@@ -112,7 +138,7 @@ async function saveInfluencerResults(results) {
   await ensureInfluencerTable();
 
   for (const row of results.map(enrichInfluencerResult)) {
-    await sql`
+    await dbQuery`
       INSERT INTO influencer (username, followers, likes, comments, er, grade, analyzed_at)
       VALUES (
         ${row.username},
@@ -147,7 +173,7 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/influencers", async (_req, res) => {
   try {
     await ensureInfluencerTable();
-    const { rows } = await sql`
+    const { rows } = await dbQuery`
       SELECT username, followers, likes, comments, er, grade, analyzed_at
       FROM influencer
       ORDER BY analyzed_at DESC
